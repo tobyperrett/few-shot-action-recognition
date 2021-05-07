@@ -15,10 +15,28 @@ from videotransforms.volume_transforms import ClipToTensor
 
 """Contains video frame paths and ground truth labels for a single split (e.g. train videos). """
 class Split():
-    def __init__(self):
+    def __init__(self, folder):
         self.gt_a_list = []
         self.videos = []
-    
+
+        class_folders = os.listdir(folder)
+        class_folders.sort()
+
+        for class_folder in class_folders:
+            video_folders = os.listdir(os.path.join(folder, class_folder))
+            video_folders.sort()
+
+            imgs = os.listdir(os.path.join(folder, class_folder, video_folder))
+            if len(imgs) < self.seq_len:
+                continue            
+            imgs.sort()
+            paths = [os.path.join(folder, class_folder, video_folder, img) for img in imgs]
+            paths.sort()
+            class_id =  class_folders.index(class_folder)
+            self.add_vid(paths, class_id)
+
+        print("loaded {} videos from {}".format(len(self.gt_a_list), folder))
+
     def add_vid(self, paths, gt_a):
         self.videos.append(paths)
         self.gt_a_list.append(gt_a)
@@ -40,14 +58,6 @@ class Split():
     def get_unique_classes(self):
         return list(set(self.gt_a_list))
 
-    def get_max_video_len(self):
-        max_len = 0
-        for v in self.videos:
-            l = len(v)
-            if l > max_len:
-                max_len = l
-        return max_len
-
     def __len__(self):
         return len(self.gt_a_list)
 
@@ -57,18 +67,17 @@ class VideoDataset(torch.utils.data.Dataset):
         self.args = args
         self.get_item_counter = 0
 
-        self.data_dir = args.path
-        self.seq_len = args.seq_len
-        self.train = True
+        self.mode = "train"
         self.tensor_transform = transforms.ToTensor()
 
-        self.train_split = Split()
-        self.val_split = Split()
-        self.test_split = Split()
+        self.train_split = Split(os.path.join(self.args.dataset, "train"))
+        self.val_split = Split(os.path.join(self.args.dataset, "val"))
+        self.test_split = Split(os.path.join(self.args.dataset, "test"))
 
         self.setup_transforms()
         self._select_fold()
         self.read_dir()
+
 
     """Setup crop sizes/flips for augmentation during training and centre crop for testing"""
     def setup_transforms(self):
@@ -82,8 +91,8 @@ class VideoDataset(torch.utils.data.Dataset):
             video_transform_list.append(Resize(256))
             video_test_list.append(Resize(256))
         else:
-            print("img size transforms not setup")
-            exit(1)
+            raise NotImplementedError("img size transforms not setup")
+
         video_transform_list.append(RandomHorizontalFlip())
         video_transform_list.append(RandomCrop(self.img_size))
 
@@ -93,131 +102,35 @@ class VideoDataset(torch.utils.data.Dataset):
         self.transform["train"] = Compose(video_transform_list)
         self.transform["test"] = Compose(video_test_list)
     
-    """Loads all videos into RAM from an uncompressed zip. Necessary as the filesystem has a large block size, which is unsuitable for lots of images. """
-    """Contains some legacy code for loading images directly, but this has not been used/tested for a while so might not work with the current codebase. """
-    def read_dir(self):
-        # load zipfile into memory
-        if self.data_dir.endswith('.zip'):
-            self.zip = True
-            zip_fn = os.path.join(self.data_dir)
-            self.mem = open(zip_fn, 'rb').read()
-            self.zfile = zipfile.ZipFile(io.BytesIO(self.mem))
-        else:
-            self.zip = False
-
-        # go through zip and populate splits with frame locations and action groundtruths
-        if self.zip:
-            dir_list = list(set([x for x in self.zfile.namelist() if '.jpg' not in x]))
-
-            class_folders = list(set([x.split(os.sep)[-3] for x in dir_list if len(x.split(os.sep)) > 2]))
-            class_folders.sort()
-            self.class_folders = class_folders
-            video_folders = list(set([x.split(os.sep)[-2] for x in dir_list if len(x.split(os.sep)) > 3]))
-            video_folders.sort()
-            self.video_folders = video_folders
-
-            class_folders_indexes = {v: k for k, v in enumerate(self.class_folders)}
-            video_folders_indexes = {v: k for k, v in enumerate(self.video_folders)}
-            
-            img_list = [x for x in self.zfile.namelist() if '.jpg' in x]
-            img_list.sort()
-
-            c = self.get_train_or_test_db(video_folders[0])
-
-            last_video_folder = None
-            last_video_class = -1
-            insert_frames = []
-            for img_path in img_list:
-            
-                class_folder, video_folder, jpg = img_path.split(os.sep)[-3:]
-
-                if video_folder != last_video_folder:
-                    if len(insert_frames) >= self.seq_len:
-                        c = self.get_train_or_test_db(last_video_folder.lower())
-                        if c != None:
-                            c.add_vid(insert_frames, last_video_class)
-                        else:
-                            pass
-                    insert_frames = []
-                    class_id = class_folders_indexes[class_folder]
-                    vid_id = video_folders_indexes[video_folder]
-               
-                insert_frames.append(img_path)
-                last_video_folder = video_folder
-                last_video_class = class_id
-
-            c = self.get_train_or_test_db(last_video_folder)
-            if c != None and len(insert_frames) >= self.seq_len:
-                c.add_vid(insert_frames, last_video_class)
-        else:
-            class_folders = os.listdir(self.data_dir)
-            class_folders.sort()
-            self.class_folders = class_folders
-            for class_folder in class_folders:
-                video_folders = os.listdir(os.path.join(self.data_dir, class_folder))
-                video_folders.sort()
-                if self.args.debug_loader:
-                    video_folders = video_folders[0:1]
-                for video_folder in video_folders:
-                    c = self.get_train_or_test_db(video_folder)
-                    if c == None:
-                        continue
-                    imgs = os.listdir(os.path.join(self.data_dir, class_folder, video_folder))
-                    if len(imgs) < self.seq_len:
-                        continue            
-                    imgs.sort()
-                    paths = [os.path.join(self.data_dir, class_folder, video_folder, img) for img in imgs]
-                    paths.sort()
-                    class_id =  class_folders.index(class_folder)
-                    c.add_vid(paths, class_id)
-        print("loaded {}".format(self.data_dir))
-        print("train: {}, test: {}".format(len(self.train_split), len(self.test_split)))
 
     """ return the current split being used """
-    def get_train_or_test_db(self, split=None):
-        if split is None:
-            get_train_split = self.train
-        else:
-            if split in self.train_test_lists["train"]:
-                get_train_split = True
-            elif split in self.train_test_lists["test"]:
-                get_train_split = False
-            else:
-                return None
-        if get_train_split:
+    def get_split(self):
+        if self.split == "train":
             return self.train_split
-        else:
+        elif self.split == "val":
+            return self.val_split
+        elif self.split == "test":
             return self.test_split
-    
 
     """ Set len to large number as we use lots of random tasks. Stopping point controlled in run.py. """
     def __len__(self):
-        c = self.get_train_or_test_db()
         return 1000000
-        return len(c)
-   
+  
     
     """Loads a single image from a specified path """
     def read_single_image(self, path):
-        if self.zip:
-            with self.zfile.open(path, 'r') as f:
-                with Image.open(f) as i:
-                    i.load()
-                    return i
-        else:
-            with Image.open(path) as i:
-                i.load()
-                return i
+        with Image.open(path) as i:
+            i.load()
+            return i
     
     """Gets a single video sequence. Handles sampling if there are more frames than specified. """
     def get_seq(self, label, idx=-1):
-        c = self.get_train_or_test_db()
+        c = self.get_split()
         paths, vid_id = c.get_rand_vid(label, idx) 
         n_frames = len(paths)
     
-        idx_f = np.linspace(start, end, num=self.seq_len)
+        idx_f = np.linspace(0, n_frames-1, num=self.seq_len)
         idxs = [int(f) for f in idx_f]
-            
 
         imgs = [self.read_single_image(paths[i]) for i in idxs]
         if (self.transform is not None):
@@ -235,7 +148,7 @@ class VideoDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
 
         #select classes to use for this task
-        c = self.get_train_or_test_db()
+        c = self.get_split()
         classes = c.get_unique_classes()
         batch_classes = random.sample(classes, self.way)
 
@@ -285,3 +198,7 @@ class VideoDataset(torch.utils.data.Dataset):
         return {"support_set":support_set, "support_labels":support_labels, "target_set":target_set, "target_labels":target_labels, "real_target_labels":real_target_labels, "batch_class_list": batch_classes}
 
 
+if name == "__main__":
+    args = object()
+    args.dataset = "data/test"
+    vd = VideoDataset(args)
