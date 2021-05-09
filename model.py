@@ -212,7 +212,7 @@ class CNN_TRX(CNN_FSHead):
 
     def distribute_model(self):
         """
-        Distributes the CNNs over multiple GPUs.
+        Distributes the CNNs over multiple GPUs. Leaves TRX on GPU 0.
         :return: Nothing
         """
         if self.args.num_gpus > 1:
@@ -222,7 +222,7 @@ class CNN_TRX(CNN_FSHead):
             self.transformers.cuda(0)
 
     def loss(self, task_dict, model_dict):
-        pass
+        return F.cross_entropy(model_dict["logits"], task_dict["target_labels"])
 
 
 
@@ -293,7 +293,7 @@ class CNN_OTAM(CNN_FSHead):
         return return_dict
 
     def loss(self, task_dict, model_dict):
-        pass
+        return F.cross_entropy(model_dict["logits"], task_dict["target_labels"])
 
 
 if __name__ == "__main__":
@@ -303,8 +303,8 @@ if __name__ == "__main__":
             self.trans_linear_out_dim = 128
 
             self.way = 5
-            self.shot = 2
-            self.query_per_class = 3
+            self.shot = 1
+            self.query_per_class = 1
             self.trans_dropout = 0.1
             self.seq_len = 8 
             self.img_size = 84
@@ -316,12 +316,13 @@ if __name__ == "__main__":
     
     device = 'cpu'
     # device = 'cuda:0'
-    # model = CNN_TRX(args).to(device)
-    model = CNN_OTAM(args).to(device)
+    model = CNN_TRX(args).to(device)
+    # model = CNN_OTAM(args).to(device)
     
     support_imgs = torch.rand(args.way * args.shot * args.seq_len,3, args.img_size, args.img_size).to(device)
     target_imgs = torch.rand(args.way * args.query_per_class * args.seq_len ,3, args.img_size, args.img_size).to(device)
     support_labels = torch.tensor([0,1,2,3,4]).to(device)
+    target_labels = torch.tensor([0,1,2,3,4]).to(device)
 
     print("Support images input shape: {}".format(support_imgs.shape))
     print("Target images input shape: {}".format(target_imgs.shape))
@@ -331,6 +332,7 @@ if __name__ == "__main__":
     task_dict["support_set"] = support_imgs
     task_dict["support_labels"] = support_labels
     task_dict["target_set"] = target_imgs
+    task_dict["target_labels"] = target_labels
 
     model_dict = model(support_imgs, support_labels, target_imgs)
     print("TRX returns the distances from each query to each class prototype.  Use these as logits.  Shape: {}".format(model_dict['logits'].shape))

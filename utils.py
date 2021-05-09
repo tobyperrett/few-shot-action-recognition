@@ -13,7 +13,7 @@ def extract_class_indices(labels, which_class):
     :return: (torch.tensor) Indices in the form of a mask that indicate the locations of the specified label.
     """
     class_mask = torch.eq(labels, which_class)  # binary mask of labels equal to which_class
-    class_mask_indices = torch.nonzero(class_mask)  # indices of labels equal to which class
+    class_mask_indices = torch.nonzero(class_mask, as_tuple=False)  # indices of labels equal to which class
     return torch.reshape(class_mask_indices, (-1,))  # reshape to be a 1D vector
 
 class TestAccuracies:
@@ -23,7 +23,6 @@ class TestAccuracies:
     the evaluation to be better if more than half of the validation accuracies on the individual validation datsets
     are better than the previous best.
     """
-
     def __init__(self, validation_datasets):
         self.datasets = validation_datasets
         self.dataset_count = len(self.datasets)
@@ -84,19 +83,19 @@ def get_log_files(checkpoint_dir, resume, test_mode):
 
 
 
-def loss(test_logits_sample, test_labels, device):
-    """
-    Compute the classification loss.
-    """
-    size = test_logits_sample.size()
-    sample_count = size[0]  # scalar for the loop counter
-    num_samples = torch.tensor([sample_count], dtype=torch.float, device=device, requires_grad=False)
+# def loss(test_logits_sample, test_labels, device):
+#     """
+#     Compute the classification loss.
+#     """
+#     size = test_logits_sample.size()
+#     sample_count = size[0]  # scalar for the loop counter
+#     num_samples = torch.tensor([sample_count], dtype=torch.float, device=device, requires_grad=False)
 
-    log_py = torch.empty(size=(size[0], size[1]), dtype=torch.float, device=device)
-    for sample in range(sample_count):
-        log_py[sample] = -F.cross_entropy(test_logits_sample[sample], test_labels, reduction='none')
-    score = torch.logsumexp(log_py, dim=0) - torch.log(num_samples)
-    return -torch.sum(score, dim=0)
+#     log_py = torch.empty(size=(size[0], size[1]), dtype=torch.float, device=device)
+#     for sample in range(sample_count):
+#         log_py[sample] = -F.cross_entropy(test_logits_sample[sample], test_labels, reduction='none')
+#     score = torch.logsumexp(log_py, dim=0) - torch.log(num_samples)
+#     return -torch.sum(score, dim=0)
 
 
 def aggregate_accuracy(test_logits_sample, test_labels):

@@ -3,7 +3,7 @@ import numpy as np
 import argparse
 import os
 import pickle
-from utils import print_and_log, get_log_files, TestAccuracies, loss, aggregate_accuracy, verify_checkpoint_dir, task_confusion
+from utils import print_and_log, get_log_files, TestAccuracies, aggregate_accuracy, verify_checkpoint_dir, task_confusion
 from model import CNN_TRX
 
 from torch.optim.lr_scheduler import MultiStepLR
@@ -11,11 +11,6 @@ from torch.utils.tensorboard import SummaryWriter
 import torchvision
 import video_reader
 import random 
-
-
-def main():
-    learner = Learner()
-    learner.run()
 
 
 class Learner:
@@ -37,7 +32,6 @@ class Learner:
         self.video_dataset = video_reader.VideoDataset(self.args)
         self.video_loader = torch.utils.data.DataLoader(self.video_dataset, batch_size=1, num_workers=self.args.num_workers)
         
-        self.loss = loss
         self.accuracy_fn = aggregate_accuracy
         
         if self.args.opt == "adam":
@@ -103,10 +97,6 @@ class Learner:
         return args
 
     def run(self):
-        config = tf.compat.v1.ConfigProto()
-        config.gpu_options.allow_growth = True
-        
-        
         train_accuracies = []
         losses = []
         total_iterations = self.args.training_iterations
@@ -154,7 +144,7 @@ class Learner:
         model_dict = self.model(task_dict['support_set'], task_dict['support_labels'], task_dict['target_set'])
         target_logits = model_dict['logits']
 
-        task_loss = self.loss(target_logits, task_dict['target_labels'], self.device) / self.args.tasks_per_batch
+        task_loss = self.model.loss(task_dict, model_dict) / self.args.tasks_per_batch
         task_accuracy = self.accuracy_fn(target_logits, task_dict['target_labels'])
 
         task_loss.backward(retain_graph=False)
@@ -193,26 +183,9 @@ class Learner:
 
 
     def prepare_task(self, task_dict, images_to_device = True):
-
         for k in task_dict.keys():
             task_dict[k] = task_dict[k][0].to(self.device)
-
         return task_dict
-
-        # support_images, support_labels = task_dict['support_set'][0], task_dict['support_labels'][0]
-        # target_images, target_labels = task_dict['target_set'][0], task_dict['target_labels'][0]
-        # real_target_labels = task_dict['real_target_labels'][0]
-        # batch_class_list = task_dict['batch_class_list'][0]
-
-        # if images_to_device:
-        #     support_images = support_images.to(self.device)
-        #     target_images = target_images.to(self.device)
-        # support_labels = support_labels.to(self.device)
-        # target_labels = target_labels.type(torch.LongTensor).to(self.device)
-# 
-        # return support_images, target_images, support_labels, target_labels, real_target_labels, batch_class_list  
-
-
 
     def save_checkpoint(self, iteration):
         d = {'iteration': iteration,
@@ -230,6 +203,9 @@ class Learner:
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.scheduler.load_state_dict(checkpoint['scheduler'])
 
+def main():
+    learner = Learner()
+    learner.run()
 
 if __name__ == "__main__":
     main()
