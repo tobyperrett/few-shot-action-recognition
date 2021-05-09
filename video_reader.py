@@ -198,7 +198,10 @@ class VideoDataset(torch.utils.data.Dataset):
         return {"support_set":support_set, "support_labels":support_labels, "target_set":target_set, "target_labels":target_labels, "real_target_labels":real_target_labels, "batch_class_list": batch_classes}
 
 
-if name == "__main__":
-    args = object()
+if __name__ == "__main__":
+    class Object(object):
+        pass
+    args = Object()
     args.dataset = "data/test"
+    
     vd = VideoDataset(args)

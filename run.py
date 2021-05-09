@@ -82,7 +82,7 @@ class Learner:
         parser.add_argument("--print_freq", type=int, default=1000, help="print and log every n iterations.")
         parser.add_argument("--seq_len", type=int, default=8, help="Frames per video.")
         parser.add_argument("--num_workers", type=int, default=10, help="Num dataloader workers.")
-        parser.add_argument("--method", choices=["resnet18", "resnet34", "resnet50"], default="resnet50", help="method")
+        parser.add_argument("--backbone", choices=["resnet18", "resnet34", "resnet50"], default="resnet50", help="backbone")
         parser.add_argument("--opt", choices=["adam", "sgd"], default="sgd", help="Optimizer")
         parser.add_argument("--save_freq", type=int, default=5000, help="Number of iterations between checkpoint saves.")
         parser.add_argument("--img_size", type=int, default=224, help="Input image size to the CNN after cropping.")
@@ -95,9 +95,7 @@ class Learner:
             print("need to specify a checkpoint dir")
             exit(1)
 
-        if (args.method == "resnet50") or (args.method == "resnet34"):
-            args.img_size = 224
-        if args.method == "resnet50":
+        if args.backbone == "resnet50":
             args.trans_linear_in_dim = 2048
         else:
             args.trans_linear_in_dim = 512
@@ -152,13 +150,12 @@ class Learner:
         self.logfile.close()
 
     def train_task(self, task_dict):
-        context_images, target_images, context_labels, target_labels, real_target_labels, batch_class_list = self.prepare_task(task_dict)
-
-        model_dict = self.model(context_images, context_labels, target_images)
+        task_dict = self.prepare_task(task_dict)
+        model_dict = self.model(task_dict['support_set'], task_dict['support_labels'], task_dict['target_set'])
         target_logits = model_dict['logits']
 
-        task_loss = self.loss(target_logits, target_labels, self.device) / self.args.tasks_per_batch
-        task_accuracy = self.accuracy_fn(target_logits, target_labels)
+        task_loss = self.loss(target_logits, task_dict['target_labels'], self.device) / self.args.tasks_per_batch
+        task_accuracy = self.accuracy_fn(target_logits, task_dict['target_labels'])
 
         task_loss.backward(retain_graph=False)
 
@@ -178,10 +175,10 @@ class Learner:
                         break
                     iteration += 1
 
-                    context_images, target_images, context_labels, target_labels, real_target_labels, batch_class_list = self.prepare_task(task_dict)
-                    model_dict = self.model(context_images, context_labels, target_images)
+                    task_dict = self.prepare_task(task_dict)
+                    model_dict = self.model(task_dict['support_set'], task_dict['support_labels'], task_dict['target_set'])
                     target_logits = model_dict['logits']
-                    accuracy = self.accuracy_fn(target_logits, target_labels)
+                    accuracy = self.accuracy_fn(target_logits, task_dict['target_labels'])
                     accuracies.append(accuracy.item())
                     del target_logits
 
@@ -196,25 +193,25 @@ class Learner:
 
 
     def prepare_task(self, task_dict, images_to_device = True):
-        context_images, context_labels = task_dict['support_set'][0], task_dict['support_labels'][0]
-        target_images, target_labels = task_dict['target_set'][0], task_dict['target_labels'][0]
-        real_target_labels = task_dict['real_target_labels'][0]
-        batch_class_list = task_dict['batch_class_list'][0]
 
-        if images_to_device:
-            context_images = context_images.to(self.device)
-            target_images = target_images.to(self.device)
-        context_labels = context_labels.to(self.device)
-        target_labels = target_labels.type(torch.LongTensor).to(self.device)
+        for k in task_dict.keys():
+            task_dict[k] = task_dict[k][0].to(self.device)
 
-        return context_images, target_images, context_labels, target_labels, real_target_labels, batch_class_list  
+        return task_dict
 
-    def shuffle(self, images, labels):
-        """
-        Return shuffled data.
-        """
-        permutation = np.random.permutation(images.shape[0])
-        return images[permutation], labels[permutation]
+        # support_images, support_labels = task_dict['support_set'][0], task_dict['support_labels'][0]
+        # target_images, target_labels = task_dict['target_set'][0], task_dict['target_labels'][0]
+        # real_target_labels = task_dict['real_target_labels'][0]
+        # batch_class_list = task_dict['batch_class_list'][0]
+
+        # if images_to_device:
+        #     support_images = support_images.to(self.device)
+        #     target_images = target_images.to(self.device)
+        # support_labels = support_labels.to(self.device)
+        # target_labels = target_labels.type(torch.LongTensor).to(self.device)
+# 
+        # return support_images, target_images, support_labels, target_labels, real_target_labels, batch_class_list  
+
 
 
     def save_checkpoint(self, iteration):

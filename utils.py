@@ -5,6 +5,16 @@ import math
 from enum import Enum
 import sys
 
+def extract_class_indices(labels, which_class):
+    """
+    Helper method to extract the indices of elements which have the specified label.
+    :param labels: (torch.tensor) Labels of the context set.
+    :param which_class: Label for which indices are extracted.
+    :return: (torch.tensor) Indices in the form of a mask that indicate the locations of the specified label.
+    """
+    class_mask = torch.eq(labels, which_class)  # binary mask of labels equal to which_class
+    class_mask_indices = torch.nonzero(class_mask)  # indices of labels equal to which class
+    return torch.reshape(class_mask_indices, (-1,))  # reshape to be a 1D vector
 
 class TestAccuracies:
     """
@@ -73,40 +83,6 @@ def get_log_files(checkpoint_dir, resume, test_mode):
     return checkpoint_dir, logfile, checkpoint_path_validation, checkpoint_path_final
 
 
-def stack_first_dim(x):
-    """
-    Method to combine the first two dimension of an array
-    """
-    x_shape = x.size()
-    new_shape = [x_shape[0] * x_shape[1]]
-    if len(x_shape) > 2:
-        new_shape += x_shape[2:]
-    return x.view(new_shape)
-
-
-def split_first_dim_linear(x, first_two_dims):
-    """
-    Undo the stacking operation
-    """
-    x_shape = x.size()
-    new_shape = first_two_dims
-    if len(x_shape) > 1:
-        new_shape += [x_shape[-1]]
-    return x.view(new_shape)
-
-
-def sample_normal(mean, var, num_samples):
-    """
-    Generate samples from a reparameterized normal distribution
-    :param mean: tensor - mean parameter of the distribution
-    :param var: tensor - variance of the distribution
-    :param num_samples: np scalar - number of samples to generate
-    :return: tensor - samples from distribution of size numSamples x dim(mean)
-    """
-    sample_shape = [num_samples] + len(mean.size())*[1]
-    normal_distribution = torch.distributions.Normal(mean.repeat(sample_shape), var.repeat(sample_shape))
-    return normal_distribution.rsample()
-
 
 def loss(test_logits_sample, test_labels, device):
     """
@@ -130,14 +106,5 @@ def aggregate_accuracy(test_logits_sample, test_labels):
     averaged_predictions = torch.logsumexp(test_logits_sample, dim=0)
     return torch.mean(torch.eq(test_labels, torch.argmax(averaged_predictions, dim=-1)).float())
 
-def task_confusion(test_logits, test_labels, real_test_labels, batch_class_list):
-    preds = torch.argmax(torch.logsumexp(test_logits, dim=0), dim=-1)
-    real_preds = batch_class_list[preds]
-    return real_preds
 
-def linear_classifier(x, param_dict):
-    """
-    Classifier.
-    """
-    return F.linear(x, param_dict['weight_mean'], param_dict['bias_mean'])
 

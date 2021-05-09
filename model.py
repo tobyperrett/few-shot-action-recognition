@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from collections import OrderedDict
-from utils import split_first_dim_linear
 import math
 from itertools import combinations 
 
@@ -9,10 +9,75 @@ from torch.autograd import Variable
 
 import torchvision.models as models
 
-NUM_SAMPLES=1
+from abc import abstractmethod
+
+from utils import extract_class_indices
+
+from einops import rearrange
+
+class CNN_FSHead(nn.Module):
+    """
+    Abstract class which handles a few-shot method. Contains a resnet backbone which computes features.
+    """
+    @abstractmethod
+    def __init__(self, args):
+        super(CNN_FSHead, self).__init__()
+        self.train()
+        self.args = args
+
+        if self.args.backbone == "resnet18":
+            resnet = models.resnet18(pretrained=True)  
+        elif self.args.backbone == "resnet34":
+            resnet = models.resnet34(pretrained=True)
+        elif self.args.backbone == "resnet50":
+            resnet = models.resnet50(pretrained=True)
+
+        last_layer_idx = -1
+        self.resnet = nn.Sequential(*list(resnet.children())[:last_layer_idx])
+
+    def get_feats(self, support_images, target_images):
+        """
+        Takes in images from the support set and query video and returns CNN features.
+        """
+        support_features = self.resnet(support_images).squeeze()
+        target_features = self.resnet(target_images).squeeze()
+
+        dim = int(support_features.shape[1])
+
+        support_features = support_features.reshape(-1, self.args.seq_len, dim)
+        target_features = target_features.reshape(-1, self.args.seq_len, dim)
+
+        return support_features, target_features
+
+    @abstractmethod
+    def forward(self, support_images, support_labels, target_images):
+        """
+        Should return a dict containing logits which are required for computing accuracy. Dict can also contain
+        other info needed to compute the loss. E.g. inter class distances.
+        """
+        pass
+
+    @abstractmethod
+    def distribute_model(self):
+        """
+        Use to split the backbone and anything else over multiple GPUs.
+        """
+        pass
+    
+    @abstractmethod
+    def loss(self, task_dict, model_dict):
+        """
+        Takes in a the task dict containing labels etc.
+        Takes in the model output dict, which contains "logits", as well as any other info needed to compute the loss.
+        """
+        pass
+
+
 
 class PositionalEncoding(nn.Module):
-    "Implement the PE function."
+    """
+    Positional encoding from Transformer paper.
+    """
     def __init__(self, d_model, dropout, max_len=5000, pe_scale_factor=0.1):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
@@ -32,6 +97,9 @@ class PositionalEncoding(nn.Module):
 
 
 class TemporalCrossTransformer(nn.Module):
+    """
+    A temporal cross transformer for a single tuple cardinality. E.g. pairs or triples.
+    """
     def __init__(self, args, temporal_set_size=3):
         super(TemporalCrossTransformer, self).__init__()
        
@@ -52,7 +120,8 @@ class TemporalCrossTransformer(nn.Module):
         # generate all tuples
         frame_idxs = [i for i in range(self.args.seq_len)]
         frame_combinations = combinations(frame_idxs, temporal_set_size)
-        self.tuples = [torch.tensor(comb).cuda() for comb in frame_combinations]
+        # self.tuples = [torch.tensor(comb).cuda() for comb in frame_combinations]
+        self.tuples = nn.ParameterList([nn.Parameter(torch.tensor(comb), requires_grad=False) for comb in frame_combinations])
         self.tuples_len = len(self.tuples) 
     
     
@@ -85,13 +154,13 @@ class TemporalCrossTransformer(nn.Module):
         unique_labels = torch.unique(support_labels)
 
         # init tensor to hold distances between every support tuple and every target tuple
-        all_distances_tensor = torch.zeros(n_queries, self.args.way).cuda()
+        all_distances_tensor = torch.zeros(n_queries, self.args.way, device=queries.device)
 
         for label_idx, c in enumerate(unique_labels):
         
             # select keys and values for just this class
-            class_k = torch.index_select(mh_support_set_ks, 0, self._extract_class_indices(support_labels, c))
-            class_v = torch.index_select(mh_support_set_vs, 0, self._extract_class_indices(support_labels, c))
+            class_k = torch.index_select(mh_support_set_ks, 0, extract_class_indices(support_labels, c))
+            class_v = torch.index_select(mh_support_set_vs, 0, extract_class_indices(support_labels, c))
             k_bs = class_k.shape[0]
 
             class_scores = torch.matmul(mh_queries_ks.unsqueeze(1), class_k.transpose(-2,-1)) / math.sqrt(self.args.trans_linear_out_dim)
@@ -123,59 +192,22 @@ class TemporalCrossTransformer(nn.Module):
         return return_dict
 
 
-
-    @staticmethod
-    def _extract_class_indices(labels, which_class):
-        """
-        Helper method to extract the indices of elements which have the specified label.
-        :param labels: (torch.tensor) Labels of the context set.
-        :param which_class: Label for which indices are extracted.
-        :return: (torch.tensor) Indices in the form of a mask that indicate the locations of the specified label.
-        """
-        class_mask = torch.eq(labels, which_class)  # binary mask of labels equal to which_class
-        class_mask_indices = torch.nonzero(class_mask)  # indices of labels equal to which class
-        return torch.reshape(class_mask_indices, (-1,))  # reshape to be a 1D vector
-        
-
-class CNN_TRX(nn.Module):
+class CNN_TRX(CNN_FSHead):
     """
-    Standard Resnet connected to a Temporal Cross Transformer.
-    
+    Standard Resnet connected to Temporal Cross Transformers of multiple cardinalities.
     """
     def __init__(self, args):
-        super(CNN_TRX, self).__init__()
-
-        self.train()
-        self.args = args
-
-        if self.args.method == "resnet18":
-            resnet = models.resnet18(pretrained=True)  
-        elif self.args.method == "resnet34":
-            resnet = models.resnet34(pretrained=True)
-        elif self.args.method == "resnet50":
-            resnet = models.resnet50(pretrained=True)
-
-        last_layer_idx = -1
-        self.resnet = nn.Sequential(*list(resnet.children())[:last_layer_idx])
-
+        super(CNN_TRX, self).__init__(args)
         self.transformers = nn.ModuleList([TemporalCrossTransformer(args, s) for s in args.temp_set]) 
 
-    def forward(self, context_images, context_labels, target_images):
-
-        context_features = self.resnet(context_images).squeeze()
-        target_features = self.resnet(target_images).squeeze()
-
-        dim = int(context_features.shape[1])
-
-        context_features = context_features.reshape(-1, self.args.seq_len, dim)
-        target_features = target_features.reshape(-1, self.args.seq_len, dim)
-
-        all_logits = [t(context_features, context_labels, target_features)['logits'] for t in self.transformers]
+    def forward(self, support_images, support_labels, target_images):
+        support_features, target_features = self.get_feats(support_images, target_images)
+        all_logits = [t(support_features, support_labels, target_features)['logits'] for t in self.transformers]
         all_logits = torch.stack(all_logits, dim=-1)
         sample_logits = all_logits 
         sample_logits = torch.mean(sample_logits, dim=[-1])
 
-        return_dict = {'logits': split_first_dim_linear(sample_logits, [NUM_SAMPLES, target_features.shape[0]])}
+        return_dict = {'logits': sample_logits}
         return return_dict
 
     def distribute_model(self):
@@ -189,6 +221,79 @@ class CNN_TRX(nn.Module):
 
             self.transformers.cuda(0)
 
+    def loss(self, task_dict, model_dict):
+        pass
+
+
+
+def relaxed_min(x, lbda=0.05):
+    """
+    Differentiable approx min calculation
+    """
+    rmin = -lbda * torch.log(torch.sum(torch.exp(-x / lbda)))
+    return rmin
+
+def OTAM_dist(query, support):
+    """
+    Calculates the minimum OTAM alignment distance between two videos.
+    """
+    # get frame correspondences
+    numerator = torch.matmul(query, support.transpose(-1, -2))
+    q_norm = torch.norm(query, dim=-1).unsqueeze(-1)
+    s_norm = torch.norm(support, dim=-1).unsqueeze(-1)
+    denominator = torch.matmul(q_norm, s_norm.transpose(-1, -2))
+    q_s_dists = 1 - torch.div(numerator, denominator)
+
+    # pad left and right edges with zeros
+    q_s_dists = F.pad(q_s_dists, (1,1), 'constant', 0)
+
+    # matrix to hold cumulative distance intermediate results
+    gamma_mat = torch.zeros(q_s_dists.shape, device = q_s_dists.device)
+
+    # calculate cumulative distances
+    for l in range(0, gamma_mat.shape[0]):
+        for m in range(0, gamma_mat.shape[1]):
+            check_vals = []
+            if m > 0:
+                check_vals.append(gamma_mat[l, m-1])
+                if l > 0:
+                    check_vals.append(gamma_mat[l-1, m-1])
+            if (m==1) or (m==(gamma_mat.shape[1]-1)):
+                if m > 0:
+                    check_vals.append(gamma_mat[l, m-1])
+            if len(check_vals) > 0:
+                gamma_mat[l,m] = q_s_dists[l,m] + relaxed_min(torch.tensor(check_vals))
+
+    # return final cumulative distance
+    return gamma_mat[-1,-1]
+
+class CNN_OTAM(CNN_FSHead):
+    """
+    OTAM with a CNN backbone.
+    """
+    def __init__(self, args):
+        super(CNN_OTAM, self).__init__(args)
+
+    def forward(self, support_images, support_labels, target_images):
+        support_features, target_features = self.get_feats(support_images, target_images)
+        unique_labels = torch.unique(support_labels)
+
+        n_queries = target_features.shape[0]
+        n_support = support_features.shape[0]
+
+        dists = torch.zeros(n_queries, n_support, device=target_images.device)
+        for q in range(n_queries):
+            for s in range(n_support):
+                dists[q][s] = OTAM_dist(target_features[q], support_features[s])
+        
+        class_dists = [torch.mean(torch.index_select(dists, 1, extract_class_indices(support_labels, c)), dim=1) for c in unique_labels]
+        class_dists = torch.stack(class_dists).transpose(1,0)
+
+        return_dict = {'logits': class_dists}
+        return return_dict
+
+    def loss(self, task_dict, model_dict):
+        pass
 
 
 if __name__ == "__main__":
@@ -198,19 +303,21 @@ if __name__ == "__main__":
             self.trans_linear_out_dim = 128
 
             self.way = 5
-            self.shot = 1
-            self.query_per_class = 5
+            self.shot = 2
+            self.query_per_class = 3
             self.trans_dropout = 0.1
             self.seq_len = 8 
             self.img_size = 84
-            self.method = "resnet18"
+            self.backbone = "resnet18"
             self.num_gpus = 1
             self.temp_set = [2,3]
     args = ArgsObject()
     torch.manual_seed(0)
     
-    device = 'cuda:0'
-    model = CNN_TRX(args).to(device)
+    device = 'cpu'
+    # device = 'cuda:0'
+    # model = CNN_TRX(args).to(device)
+    model = CNN_OTAM(args).to(device)
     
     support_imgs = torch.rand(args.way * args.shot * args.seq_len,3, args.img_size, args.img_size).to(device)
     target_imgs = torch.rand(args.way * args.query_per_class * args.seq_len ,3, args.img_size, args.img_size).to(device)
@@ -220,9 +327,17 @@ if __name__ == "__main__":
     print("Target images input shape: {}".format(target_imgs.shape))
     print("Support labels input shape: {}".format(support_imgs.shape))
 
-    out = model(support_imgs, support_labels, target_imgs)
+    task_dict = {}
+    task_dict["support_set"] = support_imgs
+    task_dict["support_labels"] = support_labels
+    task_dict["target_set"] = target_imgs
 
-    print("TRX returns the distances from each query to each class prototype.  Use these as logits.  Shape: {}".format(out['logits'].shape))
+    model_dict = model(support_imgs, support_labels, target_imgs)
+    print("TRX returns the distances from each query to each class prototype.  Use these as logits.  Shape: {}".format(model_dict['logits'].shape))
+
+    loss = model.loss(task_dict, model_dict)
+
+
 
 
 
