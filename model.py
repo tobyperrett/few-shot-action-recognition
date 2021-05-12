@@ -43,8 +43,6 @@ class CNN_FSHead(nn.Module):
         support_features = support_features.reshape(-1, self.args.seq_len, dim)
         target_features = target_features.reshape(-1, self.args.seq_len, dim)
 
-        print(self.resnet[-2][1].conv2.weight[0::256, 0::256, 1, 1])
-
         return support_features, target_features
 
     @abstractmethod
@@ -234,54 +232,43 @@ def relaxed_min(x, lbda=0.1):
     """
     Differentiable approx min calculation
     """
-    rmin = -lbda * torch.log(torch.sum(torch.exp(-x / lbda)))
+    rmin = -lbda * torch.log(torch.sum(torch.exp(-x / lbda), dim=-1))
+    
     return rmin
 
 def OTAM_dist(query, support):
     """
     Calculates the minimum OTAM alignment distance between two videos.
     """
-
-    # return torch.norm(query - support)
-
-    # get frame correspondences
-    numerator = torch.matmul(query, support.transpose(-1, -2))
-    q_norm = torch.norm(query, dim=-1).unsqueeze(-1)
-    s_norm = torch.norm(support, dim=-1).unsqueeze(-1)
-    denominator = torch.matmul(q_norm, s_norm.transpose(-1, -2))
-    q_s_dists = 1 - torch.div(numerator, denominator)
-
-    # return(torch.norm(relaxed_min(q_s_dists)))
+    pass
 
 
-    # pad left and right edges with zeros
-    q_s_dists = F.pad(q_s_dists, (1,1), 'constant', 0)
-    q_s_dists = F.pad(q_s_dists, (1,0,1,0), 'constant', 0)
-    print(q_s_dists)
+def OTAM_cum_dist(dists):
+    """
+    Calculates the OTAM distances for sequences in one direction (e.g. query to support).
+    :input: Tensor with frame similarity scores of shape [n_queries, n_support, query_seq_len, support_seq_len] 
+    """
+    dists = F.pad(dists, (1,1), 'constant', 0)
 
+    cum_dists = torch.zeros(dists.shape, device=dists.device)
+    
+    # top row
+    for m in range(1, dists.shape[3]):
+        cum_dists[:,:,1,m] = dists[:,:,1,m] + dists[:,:,1,m-1] 
 
-    # matrix to hold cumulative distance intermediate results
-    # gamma_mat = torch.zeros(q_s_dists.shape, device = q_s_dists.device)
-
-    # print(gamma_mat)
-
-    # calculate cumulative distances
-    for l in range(1, q_s_dists.shape[0]):
-        for m in range(1, q_s_dists.shape[1]):
-            check_vals = []
-            check_vals.append(q_s_dists[l, m-1])
-            check_vals.append(q_s_dists[l-1, m-1])
-            if (m==2) or (m==(q_s_dists.shape[1]-1)):
-                check_vals.append(q_s_dists[l, m-1])
-            q_s_dists[l,m] = q_s_dists[l,m] + relaxed_min(torch.tensor(check_vals))
-    print(q_s_dists)
-    print(q_s_dists[-1][-1])
-    exit(1)
-
-    # print(gamma_mat[-1, -1])
-
-    # return final cumulative distance
-    return q_s_dists[-1,-1]
+    # remaining rows
+    for l in range(1,dists.shape[2]):
+        #first non-zero column
+        cum_dists[:,:,l,1] = dists[:,:,l,m] + relaxed_min(torch.stack([cum_dists[:,:,l-1,1-1], cum_dists[:,:,l-1,1], cum_dists[:,:,l,1-1]], dim=-1))
+        
+        #middle columns
+        for m in range(2,dists.shape[3]-1):
+            cum_dists[:,:,l,m] = dists[:,:,l,m] + relaxed_min(torch.stack([cum_dists[:,:,l-1,m-1], cum_dists[:,:,l,m-1]], dim=-1))
+            
+        #last column
+        cum_dists[:,:,l,-1] = dists[:,:,l,m] + relaxed_min(torch.stack([cum_dists[:,:,l-1,-1-1], cum_dists[:,:,l-1,-1], cum_dists[:,:,l,-1-1]], dim=-1))
+    
+    return cum_dists[:,:,-1,-1]
 
 class CNN_OTAM(CNN_FSHead):
     """
@@ -289,31 +276,46 @@ class CNN_OTAM(CNN_FSHead):
     """
     def __init__(self, args):
         super(CNN_OTAM, self).__init__(args)
+        self.l_norm = nn.LayerNorm(self.args.trans_linear_in_dim)
 
     def forward(self, support_images, support_labels, target_images):
         support_features, target_features = self.get_feats(support_images, target_images)
         unique_labels = torch.unique(support_labels)
 
-
         n_queries = target_features.shape[0]
         n_support = support_features.shape[0]
 
-        dists = torch.zeros(n_queries, n_support, device=target_images.device)
-        for q in range(n_queries):
-            for s in range(n_support):
-                dists[q][s] = OTAM_dist(target_features[q], support_features[s]) + OTAM_dist(support_features[s], target_features[q])
-                # dists[q][s] = torch.norm(target_features[q] - support_features[s])
+        support_features = rearrange(support_features, 'b s d -> (b s) d')
+        target_features = rearrange(target_features, 'b s d -> (b s) d')
 
+        numerator  = torch.matmul(target_features, support_features.transpose(-1,-2))
+        t_norm = torch.norm(target_features, dim=-1).unsqueeze(-1)
+        s_norm = torch.norm(support_features, dim=-1).unsqueeze(-1)
+        denominator = torch.matmul(t_norm, s_norm.transpose(-1, -2))
+        frame_dists = 1 - torch.div(numerator, denominator)
+        
+        dists = rearrange(frame_dists, '(tb ts) (sb ss) -> tb sb ts ss', tb = n_queries, sb = n_support)
 
-        class_dists = [torch.mean(torch.index_select(dists, 1, extract_class_indices(support_labels, c)), dim=1) for c in unique_labels]
+        # calculate query -> support and support -> query
+        cum_dists = OTAM_cum_dist(dists) + OTAM_cum_dist(rearrange(dists, 'tb sb ts ss -> tb sb ss ts'))
+
+        class_dists = [torch.mean(torch.index_select(cum_dists, 1, extract_class_indices(support_labels, c)), dim=1) for c in unique_labels]
         class_dists = torch.stack(class_dists)
         class_dists = rearrange(class_dists, 'c q -> q c')
-
-        return_dict = {'logits': class_dists}
+        return_dict = {'logits': - class_dists}
         return return_dict
 
     def loss(self, task_dict, model_dict):
         return F.cross_entropy(model_dict["logits"], task_dict["target_labels"].long())
+
+    def distribute_model(self):
+        """
+        Distributes the CNNs over multiple GPUs.
+        """
+        if self.args.num_gpus > 1:
+            self.resnet.cuda(0)
+            self.resnet = torch.nn.DataParallel(self.resnet, device_ids=[i for i in range(0, self.args.num_gpus)])
+
 
 class CNN_TSN(CNN_FSHead):
     """
@@ -344,6 +346,14 @@ class CNN_TSN(CNN_FSHead):
 
     def loss(self, task_dict, model_dict):
         return F.cross_entropy(model_dict["logits"], task_dict["target_labels"].long())
+
+    def distribute_model(self):
+        """
+        Distributes the CNNs over multiple GPUs.
+        """
+        if self.args.num_gpus > 1:
+            self.resnet.cuda(0)
+            self.resnet = torch.nn.DataParallel(self.resnet, device_ids=[i for i in range(0, self.args.num_gpus)])
 
 
 if __name__ == "__main__":
