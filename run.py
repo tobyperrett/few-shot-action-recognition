@@ -3,8 +3,8 @@ import numpy as np
 import argparse
 import os
 import pickle
-from utils import print_and_log, get_log_files, TestAccuracies, aggregate_accuracy, verify_checkpoint_dir, task_confusion
-from model import CNN_TRX
+from utils import print_and_log, get_log_files, TestAccuracies, aggregate_accuracy, verify_checkpoint_dir
+from model import CNN_TRX, CNN_OTAM, CNN_TSN
 
 from torch.optim.lr_scheduler import MultiStepLR
 from torch.utils.tensorboard import SummaryWriter
@@ -47,8 +47,15 @@ class Learner:
         self.optimizer.zero_grad()
 
     def init_model(self):
-        model = CNN_TRX(self.args)
+        if self.args.method == "trx":
+            model = CNN_TRX(self.args)
+        elif self.args.method == "otam":
+            model = CNN_OTAM(self.args)
+        elif self.args.method == "tsn":
+            model = CNN_TSN(self.args)
+
         model = model.to(self.device) 
+
         if self.args.num_gpus > 1:
             model.distribute_model()
         return model
@@ -82,6 +89,7 @@ class Learner:
         parser.add_argument("--img_size", type=int, default=224, help="Input image size to the CNN after cropping.")
         parser.add_argument("--num_gpus", type=int, default=1, help="Number of GPUs to split the ResNet over")
         parser.add_argument('--sch', nargs='+', type=int, help='iters to drop learning rate', default=[1000000])
+        parser.add_argument("--method", choices=["trx", "otam", "tsn"], default="trx", help="few-shot method to use")
 
         args = parser.parse_args()
         
@@ -155,7 +163,7 @@ class Learner:
         self.model.eval()
         with torch.no_grad():
 
-                self.video_loader.dataset.train = False
+                self.video_loader.dataset.split = "test"
                 accuracy_dict ={}
                 accuracies = []
                 iteration = 0
@@ -176,7 +184,7 @@ class Learner:
                 confidence = (196.0 * np.array(accuracies).std()) / np.sqrt(len(accuracies))
 
                 accuracy_dict[item] = {"accuracy": accuracy, "confidence": confidence}
-                self.video_loader.dataset.train = True
+                self.video_loader.dataset.split = "train"
         self.model.train()
         
         return accuracy_dict

@@ -15,25 +15,32 @@ from videotransforms.volume_transforms import ClipToTensor
 
 """Contains video frame paths and ground truth labels for a single split (e.g. train videos). """
 class Split():
-    def __init__(self, folder):
+    def __init__(self, folder, args):
+        self.args = args
+        
         self.gt_a_list = []
         self.videos = []
 
+
         class_folders = os.listdir(folder)
+        class_folders = [f for f in class_folders if "." not in f]
         class_folders.sort()
 
         for class_folder in class_folders:
             video_folders = os.listdir(os.path.join(folder, class_folder))
+            video_folders = [f for f in video_folders if "." not in f]
             video_folders.sort()
+            for video_folder in video_folders:
 
-            imgs = os.listdir(os.path.join(folder, class_folder, video_folder))
-            if len(imgs) < self.seq_len:
-                continue            
-            imgs.sort()
-            paths = [os.path.join(folder, class_folder, video_folder, img) for img in imgs]
-            paths.sort()
-            class_id =  class_folders.index(class_folder)
-            self.add_vid(paths, class_id)
+                imgs = os.listdir(os.path.join(folder, class_folder, video_folder))
+                imgs = [i for i in imgs if ((".jpg" in i) or (".png" in i))]
+                if len(imgs) < self.args.seq_len:
+                    continue            
+                imgs.sort()
+                paths = [os.path.join(folder, class_folder, video_folder, img) for img in imgs]
+                paths.sort()
+                class_id =  class_folders.index(class_folder)
+                self.add_vid(paths, class_id)
 
         print("loaded {} videos from {}".format(len(self.gt_a_list), folder))
 
@@ -67,16 +74,14 @@ class VideoDataset(torch.utils.data.Dataset):
         self.args = args
         self.get_item_counter = 0
 
-        self.mode = "train"
+        self.split = "train"
         self.tensor_transform = transforms.ToTensor()
 
-        self.train_split = Split(os.path.join(self.args.dataset, "train"))
-        self.val_split = Split(os.path.join(self.args.dataset, "val"))
-        self.test_split = Split(os.path.join(self.args.dataset, "test"))
+        self.train_split = Split(os.path.join(self.args.dataset, "train"), args)
+        self.val_split = Split(os.path.join(self.args.dataset, "val"), args)
+        self.test_split = Split(os.path.join(self.args.dataset, "test"), args)
 
         self.setup_transforms()
-        self._select_fold()
-        self.read_dir()
 
 
     """Setup crop sizes/flips for augmentation during training and centre crop for testing"""
@@ -84,19 +89,19 @@ class VideoDataset(torch.utils.data.Dataset):
         video_transform_list = []
         video_test_list = []
             
-        if self.img_size == 84:
+        if self.args.img_size == 84:
             video_transform_list.append(Resize(96))
             video_test_list.append(Resize(96))
-        elif self.img_size == 224:
+        elif self.args.img_size == 224:
             video_transform_list.append(Resize(256))
             video_test_list.append(Resize(256))
         else:
             raise NotImplementedError("img size transforms not setup")
 
         video_transform_list.append(RandomHorizontalFlip())
-        video_transform_list.append(RandomCrop(self.img_size))
+        video_transform_list.append(RandomCrop(self.args.img_size))
 
-        video_test_list.append(CenterCrop(self.img_size))
+        video_test_list.append(CenterCrop(self.args.img_size))
 
         self.transform = {}
         self.transform["train"] = Compose(video_transform_list)
@@ -129,12 +134,12 @@ class VideoDataset(torch.utils.data.Dataset):
         paths, vid_id = c.get_rand_vid(label, idx) 
         n_frames = len(paths)
     
-        idx_f = np.linspace(0, n_frames-1, num=self.seq_len)
+        idx_f = np.linspace(0, n_frames-1, num=self.args.seq_len)
         idxs = [int(f) for f in idx_f]
 
         imgs = [self.read_single_image(paths[i]) for i in idxs]
         if (self.transform is not None):
-            if self.train:
+            if self.split == "train":
                 transform = self.transform["train"]
             else:
                 transform = self.transform["test"]
@@ -150,9 +155,9 @@ class VideoDataset(torch.utils.data.Dataset):
         #select classes to use for this task
         c = self.get_split()
         classes = c.get_unique_classes()
-        batch_classes = random.sample(classes, self.way)
+        batch_classes = random.sample(classes, self.args.way)
 
-        if self.train:
+        if self.split == "train":
             n_queries = self.args.query_per_class
         else:
             n_queries = self.args.query_per_class_test

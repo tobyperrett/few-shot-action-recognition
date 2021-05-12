@@ -102,8 +102,11 @@ def aggregate_accuracy(test_logits_sample, test_labels):
     """
     Compute classification accuracy.
     """
-    averaged_predictions = torch.logsumexp(test_logits_sample, dim=0)
-    return torch.mean(torch.eq(test_labels, torch.argmax(averaged_predictions, dim=-1)).float())
 
+    # averaged_predictions = torch.logsumexp(test_logits_sample, dim=0)
+    # return torch.mean(torch.eq(test_labels, torch.argmax(averaged_predictions, dim=-1)).float())
+
+    # averaged_predictions = torch.logsumexp(test_logits_sample, dim=0)
+    return torch.mean(torch.eq(test_labels, torch.argmax(test_logits_sample, dim=-1)).float())
 
 
