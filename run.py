@@ -31,7 +31,9 @@ class Learner:
 
         self.video_dataset = video_reader.VideoDataset(self.args)
         self.video_loader = torch.utils.data.DataLoader(self.video_dataset, batch_size=1, num_workers=self.args.num_workers)
-        
+        self.test_accuracies = TestAccuracies(self.args.dataset)
+
+
         self.accuracy_fn = aggregate_accuracy
         
         if self.args.opt == "adam":
@@ -67,7 +69,7 @@ class Learner:
     def parse_command_line(self):
         parser = argparse.ArgumentParser()
 
-        parser.add_argument("--dataset", type=str, default="data/ssv2", help="Path to dataset")
+        parser.add_argument("--dataset", type=str, default="data/ssv2small", help="Path to dataset")
         parser.add_argument("--learning_rate", "-lr", type=float, default=0.001, help="Learning rate.")
         parser.add_argument("--tasks_per_batch", type=int, default=16, help="Number of tasks between parameter optimizations.")
         parser.add_argument("--checkpoint_dir", "-c", default=None, help="Directory to save checkpoint to.")
