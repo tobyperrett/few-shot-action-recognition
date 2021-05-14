@@ -31,7 +31,7 @@ class Learner:
 
         self.video_dataset = video_reader.VideoDataset(self.args)
         self.video_loader = torch.utils.data.DataLoader(self.video_dataset, batch_size=1, num_workers=self.args.num_workers)
-        self.test_accuracies = TestAccuracies(self.args.dataset)
+        self.test_accuracies = TestAccuracies([self.args.dataset])
 
 
         self.accuracy_fn = aggregate_accuracy
