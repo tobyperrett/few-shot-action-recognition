@@ -3,7 +3,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
 import math
-from itertools import combinations 
+from itertools import combinations
+from torch.nn.init import xavier_normal_ 
+
+from torch.nn.modules.activation import MultiheadAttention
 
 from torch.autograd import Variable
 import torchvision.models as models
@@ -53,12 +56,13 @@ class CNN_FSHead(nn.Module):
         """
         pass
 
-    @abstractmethod
     def distribute_model(self):
         """
-        Use to split the backbone and anything else over multiple GPUs.
+        Use to split the backbone evenly over all GPUs. Modify if you have other components
         """
-        pass
+        if self.args.num_gpus > 1:
+            self.resnet.cuda(0)
+            self.resnet = torch.nn.DataParallel(self.resnet, device_ids=[i for i in range(0, self.args.num_gpus)])
     
     @abstractmethod
     def loss(self, task_dict, model_dict):
@@ -72,7 +76,7 @@ class CNN_FSHead(nn.Module):
 
 class PositionalEncoding(nn.Module):
     """
-    Positional encoding from Transformer paper.
+    Positional encoding from the Transformer paper.
     """
     def __init__(self, d_model, dropout, max_len=5000, pe_scale_factor=0.1):
         super(PositionalEncoding, self).__init__()
@@ -236,13 +240,6 @@ def relaxed_min(x, lbda=0.1):
     
     return rmin
 
-def OTAM_dist(query, support):
-    """
-    Calculates the minimum OTAM alignment distance between two videos.
-    """
-    pass
-
-
 def OTAM_cum_dist(dists):
     """
     Calculates the OTAM distances for sequences in one direction (e.g. query to support).
@@ -276,7 +273,6 @@ class CNN_OTAM(CNN_FSHead):
     """
     def __init__(self, args):
         super(CNN_OTAM, self).__init__(args)
-        self.l_norm = nn.LayerNorm(self.args.trans_linear_in_dim)
 
     def forward(self, support_images, support_labels, target_images):
         support_features, target_features = self.get_feats(support_images, target_images)
@@ -308,13 +304,6 @@ class CNN_OTAM(CNN_FSHead):
     def loss(self, task_dict, model_dict):
         return F.cross_entropy(model_dict["logits"], task_dict["target_labels"].long())
 
-    def distribute_model(self):
-        """
-        Distributes the CNNs over multiple GPUs.
-        """
-        if self.args.num_gpus > 1:
-            self.resnet.cuda(0)
-            self.resnet = torch.nn.DataParallel(self.resnet, device_ids=[i for i in range(0, self.args.num_gpus)])
 
 
 class CNN_TSN(CNN_FSHead):
@@ -335,25 +324,94 @@ class CNN_TSN(CNN_FSHead):
         support_features = self.l_norm(support_features)
         target_features = self.l_norm(target_features)
         
-        class_dists = torch.matmul(target_features, support_features.transpose(-1,-2))
-        class_dists = [torch.mean(torch.index_select(class_dists, 1, extract_class_indices(support_labels, c)), dim=1) for c in unique_labels]
+        class_sim = torch.matmul(target_features, support_features.transpose(-1,-2))
+        class_sim = [torch.mean(torch.index_select(class_sim, 1, extract_class_indices(support_labels, c)), dim=1) for c in unique_labels]
 
-        class_dists = torch.stack(class_dists)
-        class_dists = rearrange(class_dists, 'c q -> q c')
+        class_sim = torch.stack(class_sim)
+        class_sim = rearrange(class_sim, 'c q -> q c')
 
-        return_dict = {'logits': class_dists}
+        return_dict = {'logits': class_sim}
         return return_dict
 
     def loss(self, task_dict, model_dict):
         return F.cross_entropy(model_dict["logits"], task_dict["target_labels"].long())
 
-    def distribute_model(self):
+
+
+def cos_sim(x, y, epsilon=0.01):
+    """
+    Calculates the cosine similarity between the last dimension of two tensors.
+    """
+    numerator = torch.matmul(x, y.transpose(-1,-2))
+    xnorm = torch.norm(x, dim=-1).unsqueeze(-1)
+    ynorm = torch.norm(y, dim=-1).unsqueeze(-1)
+    denominator = torch.matmul(xnorm, ynorm.transpose(-1,-2)) + epsilon
+    dists = torch.div(numerator, denominator)
+    return dists
+
+class CNN_PAL(CNN_FSHead):
+    """
+    PAL with a CNN backbone. Cosine similarity as distance measure.
+    """
+    def __init__(self, args):
+        super(CNN_PAL, self).__init__(args)
+        self.mha = MultiheadAttention(embed_dim=self.args.trans_linear_in_dim, num_heads=1, dropout=0)
+        self.cos_sim = torch.nn.CosineSimilarity()
+
+
+    def forward(self, support_images, support_labels, target_images):
+        support_features, target_features = self.get_feats(support_images, target_images)
+        unique_labels = torch.unique(support_labels)
+
+        support_features = torch.mean(support_features, dim=1)
+        target_features = torch.mean(target_features, dim=1)
+
+        #reshape to n_samples, batch=1, dim
+        support_features = rearrange(support_features, 'n d -> n 1 d')
+        target_features = rearrange(target_features, 'n d -> n 1 d')
+
+        support_features = support_features + self.mha(support_features, support_features, support_features)[0]
+        target_features = target_features + self.mha(target_features, support_features, support_features)[0]
+
+        support_features = rearrange(support_features, 'b 1 d -> b d')
+        target_features = rearrange(target_features, 'b 1 d -> b d')
+
+        prototypes = [torch.mean(torch.index_select(support_features, 0, extract_class_indices(support_labels, c)), dim=0) for c in unique_labels]
+        prototypes = torch.stack(prototypes)
+
+        q_s_sim = cos_sim(target_features, prototypes)
+        return_dict = {'logits': q_s_sim}
+
+        return return_dict
+
+
+    def loss(self, task_dict, model_dict):
         """
-        Distributes the CNNs over multiple GPUs.
+        Computes cross entropy loss on the logits, and the additional loss between the queries and their correct classes.
         """
-        if self.args.num_gpus > 1:
-            self.resnet.cuda(0)
-            self.resnet = torch.nn.DataParallel(self.resnet, device_ids=[i for i in range(0, self.args.num_gpus)])
+        q_s_sim = model_dict["logits"]
+        l_meta = F.cross_entropy(q_s_sim, task_dict["target_labels"].long())
+
+        unique_labels = torch.unique(task_dict["support_labels"])
+        total_q_c_sim = torch.sum(q_s_sim, dim=0) + 0.1
+
+        print(total_q_c_sim)
+
+        q_c_sim = [torch.sum(torch.index_select(q_s_sim, 0, extract_class_indices(task_dict["target_labels"], c)), dim=0) for c in unique_labels]
+        q_c_sim = torch.stack(q_c_sim)
+        q_c_sim = torch.diagonal(q_c_sim)
+        q_c_sim = torch.div(q_c_sim, total_q_c_sim)
+
+        # q_c_sim = [torch.sum(torch.index_select(q_s_sim, 0, extract_class_indices(task_dict["target_labels"], c))[:,int(c)]) for c in unique_labels]
+        # q_c_sim = torch.div(torch.stack(q_c_sim), total_q_c_sim)
+
+
+        l_pcc = - torch.mean(torch.log(q_c_sim))
+
+        print(l_meta, l_pcc)
+
+        return l_meta #+ l_pcc
+
 
 
 if __name__ == "__main__":
@@ -377,8 +435,9 @@ if __name__ == "__main__":
     device = 'cpu'
     # device = 'cuda:0'
     # model = CNN_TRX(args).to(device)
-    model = CNN_OTAM(args).to(device)
+    # model = CNN_OTAM(args).to(device)
     # model = CNN_TSN(args).to(device)
+    model = CNN_PAL(args).to(device)
     
     support_imgs = torch.rand(args.way * args.shot * args.seq_len,3, args.img_size, args.img_size).to(device)
     target_imgs = torch.rand(args.way * args.query_per_class * args.seq_len ,3, args.img_size, args.img_size).to(device)
@@ -396,7 +455,7 @@ if __name__ == "__main__":
     task_dict["target_labels"] = target_labels
 
     model_dict = model(support_imgs, support_labels, target_imgs)
-    print("TRX returns the distances from each query to each class prototype.  Use these as logits.  Shape: {}".format(model_dict['logits'].shape))
+    print("Model returns the distances from each query to each class prototype.  Use these as logits.  Shape: {}".format(model_dict['logits'].shape))
 
     loss = model.loss(task_dict, model_dict)
 

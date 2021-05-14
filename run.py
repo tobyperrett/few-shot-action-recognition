@@ -4,7 +4,7 @@ import argparse
 import os
 import pickle
 from utils import print_and_log, get_log_files, TestAccuracies, aggregate_accuracy, verify_checkpoint_dir
-from model import CNN_TRX, CNN_OTAM, CNN_TSN
+from model import CNN_TRX, CNN_OTAM, CNN_TSN, CNN_PAL
 
 from torch.optim.lr_scheduler import MultiStepLR
 from torch.utils.tensorboard import SummaryWriter
@@ -54,11 +54,13 @@ class Learner:
         elif self.args.method == "otam":
             model = CNN_OTAM(self.args)
         elif self.args.method == "tsn":
-            model = CNN_TSN(self.args)
+            model = CNN_TSN(self.args)        
+        elif self.args.method == "pal":
+            model = CNN_PAL(self.args)
 
         model = model.to(self.device) 
 
-        if self.args.num_gpus > 1:
+        if torch.cuda.is_available() and self.args.num_gpus > 1:
             model.distribute_model()
         return model
 
@@ -91,7 +93,7 @@ class Learner:
         parser.add_argument("--img_size", type=int, default=224, help="Input image size to the CNN after cropping.")
         parser.add_argument("--num_gpus", type=int, default=4, help="Number of GPUs to split the ResNet over")
         parser.add_argument('--sch', nargs='+', type=int, help='iters to drop learning rate', default=[1000000])
-        parser.add_argument("--method", choices=["trx", "otam", "tsn"], default="trx", help="few-shot method to use")
+        parser.add_argument("--method", choices=["trx", "otam", "tsn", "pal"], default="trx", help="few-shot method to use")
 
         args = parser.parse_args()
         

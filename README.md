@@ -9,6 +9,8 @@ OTAM
 
 # Todo
 
+Sigmoid before cos similarity to keep everything > 0?
+
 dummy data
 scripts for formatting data
 tests
