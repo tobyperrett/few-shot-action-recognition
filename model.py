@@ -25,21 +25,21 @@ class CNN_FSHead(nn.Module):
         self.args = args
 
         if self.args.backbone == "resnet18":
-            resnet = models.resnet18(pretrained=True)  
+            backbone = models.resnet18(pretrained=True)  
         elif self.args.backbone == "resnet34":
-            resnet = models.resnet34(pretrained=True)
+            backbone = models.resnet34(pretrained=True)
         elif self.args.backbone == "resnet50":
-            resnet = models.resnet50(pretrained=True)
+            backbone = models.resnet50(pretrained=True)
 
         last_layer_idx = -1
-        self.resnet = nn.Sequential(*list(resnet.children())[:last_layer_idx])
+        self.backbone = nn.Sequential(*list(backbone.children())[:last_layer_idx])
 
     def get_feats(self, support_images, target_images):
         """
         Takes in images from the support set and query video and returns CNN features.
         """
-        support_features = self.resnet(support_images).squeeze()
-        target_features = self.resnet(target_images).squeeze()
+        support_features = self.backbone(support_images).squeeze()
+        target_features = self.backbone(target_images).squeeze()
 
         dim = int(support_features.shape[1])
 
@@ -61,8 +61,8 @@ class CNN_FSHead(nn.Module):
         Use to split the backbone evenly over all GPUs. Modify if you have other components
         """
         if self.args.num_gpus > 1:
-            self.resnet.cuda(0)
-            self.resnet = torch.nn.DataParallel(self.resnet, device_ids=[i for i in range(0, self.args.num_gpus)])
+            self.backbone.cuda(0)
+            self.backbone = torch.nn.DataParallel(self.backbone, device_ids=[i for i in range(0, self.args.num_gpus)])
     
     @abstractmethod
     def loss(self, task_dict, model_dict):
@@ -194,7 +194,7 @@ class TemporalCrossTransformer(nn.Module):
 
 class CNN_TRX(CNN_FSHead):
     """
-    Standard Resnet connected to Temporal Cross Transformers of multiple cardinalities.
+    Backbone connected to Temporal Cross Transformers of multiple cardinalities.
     """
     def __init__(self, args):
         super(CNN_TRX, self).__init__(args)
@@ -222,8 +222,8 @@ class CNN_TRX(CNN_FSHead):
         :return: Nothing
         """
         if self.args.num_gpus > 1:
-            self.resnet.cuda(0)
-            self.resnet = torch.nn.DataParallel(self.resnet, device_ids=[i for i in range(0, self.args.num_gpus)])
+            self.backbone.cuda(0)
+            self.backbone = torch.nn.DataParallel(self.backbone, device_ids=[i for i in range(0, self.args.num_gpus)])
 
             self.transformers.cuda(0)
 
@@ -240,30 +240,45 @@ def relaxed_min(x, lbda=0.1):
     
     return rmin
 
-def OTAM_cum_dist(dists):
+def OTAM_cum_dist(dists, lbda=0.1):
     """
     Calculates the OTAM distances for sequences in one direction (e.g. query to support).
     :input: Tensor with frame similarity scores of shape [n_queries, n_support, query_seq_len, support_seq_len] 
+    TODO: clearn up if possible - currently messy to work with pt1.8. Possibly due to stack operation?
     """
     dists = F.pad(dists, (1,1), 'constant', 0)
 
     cum_dists = torch.zeros(dists.shape, device=dists.device)
-    
+
     # top row
     for m in range(1, dists.shape[3]):
-        cum_dists[:,:,1,m] = dists[:,:,1,m] + dists[:,:,1,m-1] 
+        cum_dists[:,:,0,m] = dists[:,:,0,m] + cum_dists[:,:,0,m-1] 
+
 
     # remaining rows
     for l in range(1,dists.shape[2]):
         #first non-zero column
-        cum_dists[:,:,l,1] = dists[:,:,l,m] + relaxed_min(torch.stack([cum_dists[:,:,l-1,1-1], cum_dists[:,:,l-1,1], cum_dists[:,:,l,1-1]], dim=-1))
+        cum_dists[:,:,l,1] = dists[:,:,l,1] - lbda * torch.log( torch.exp(- cum_dists[:,:,l-1,0] / lbda) + torch.exp(- cum_dists[:,:,l-1,1] / lbda) + torch.exp(- cum_dists[:,:,l,0] / lbda) )
         
         #middle columns
         for m in range(2,dists.shape[3]-1):
-            cum_dists[:,:,l,m] = dists[:,:,l,m] + relaxed_min(torch.stack([cum_dists[:,:,l-1,m-1], cum_dists[:,:,l,m-1]], dim=-1))
+            cum_dists[:,:,l,m] = dists[:,:,l,m] - lbda * torch.log( torch.exp(- cum_dists[:,:,l-1,m-1] / lbda) + torch.exp(- cum_dists[:,:,l,m-1] / lbda ) )
             
         #last column
-        cum_dists[:,:,l,-1] = dists[:,:,l,m] + relaxed_min(torch.stack([cum_dists[:,:,l-1,-1-1], cum_dists[:,:,l-1,-1], cum_dists[:,:,l,-1-1]], dim=-1))
+        cum_dists[:,:,l,-1] = dists[:,:,l,-1] - lbda * torch.log( torch.exp(- cum_dists[:,:,l-1,-2] / lbda) + torch.exp(- cum_dists[:,:,l,-2] / lbda) )
+
+    # no error with pytorch 1.3. Perhaps it's a silent error?
+    # # remaining rows
+    # for l in range(1,dists.shape[2]):
+    #     #first non-zero column
+    #     cum_dists[:,:,l,1] = dists[:,:,l,1] + relaxed_min(torch.stack([cum_dists[:,:,l-1,1-1], cum_dists[:,:,l-1,1], cum_dists[:,:,l,1-1]], dim=-1))
+        
+    #     #middle columns
+    #     for m in range(2,dists.shape[3]-1):
+    #         cum_dists[:,:,l,m] = dists[:,:,l,m] + relaxed_min(torch.stack([cum_dists[:,:,l-1,m-1], cum_dists[:,:,l,m-1]], dim=-1))
+            
+    #     #last column
+    #     cum_dists[:,:,l,-1] = dists[:,:,l,-1] + relaxed_min(torch.stack([cum_dists[:,:,l-1,-1-1], cum_dists[:,:,l-1,-1], cum_dists[:,:,l,-1-1]], dim=-1))
     
     return cum_dists[:,:,-1,-1]
 
@@ -275,6 +290,7 @@ class CNN_OTAM(CNN_FSHead):
         super(CNN_OTAM, self).__init__(args)
 
     def forward(self, support_images, support_labels, target_images):
+
         support_features, target_features = self.get_feats(support_images, target_images)
         unique_labels = torch.unique(support_labels)
 
@@ -293,7 +309,7 @@ class CNN_OTAM(CNN_FSHead):
         dists = rearrange(frame_dists, '(tb ts) (sb ss) -> tb sb ts ss', tb = n_queries, sb = n_support)
 
         # calculate query -> support and support -> query
-        cum_dists = OTAM_cum_dist(dists) + OTAM_cum_dist(rearrange(dists, 'tb sb ts ss -> tb sb ss ts'))
+        cum_dists = OTAM_cum_dist(dists)# + OTAM_cum_dist(rearrange(dists, 'tb sb ts ss -> tb sb ss ts'))
 
         class_dists = [torch.mean(torch.index_select(cum_dists, 1, extract_class_indices(support_labels, c)), dim=1) for c in unique_labels]
         class_dists = torch.stack(class_dists)
@@ -420,11 +436,11 @@ if __name__ == "__main__":
             self.trans_linear_in_dim = 512
             self.trans_linear_out_dim = 128
 
-            self.way = 5
+            self.way = 4
             self.shot = 3
             self.query_per_class = 2
             self.trans_dropout = 0.1
-            self.seq_len = 6 
+            self.seq_len = 5 
             self.img_size = 84
             self.backbone = "resnet18"
             self.num_gpus = 1

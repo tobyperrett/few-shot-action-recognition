@@ -27,9 +27,9 @@ class TestAccuracies:
         self.datasets = validation_datasets
         self.dataset_count = len(self.datasets)
 
-    def print(self, logfile, accuracy_dict):
+    def print(self, logfile, accuracy_dict, mode="val"):
         print_and_log(logfile, "")  # add a blank line
-        print_and_log(logfile, "Test Accuracies:")
+        print_and_log(logfile, "{} accuracies:".format(mode))
         for dataset in self.datasets:
             print_and_log(logfile, "{0:}: {1:.1f}+/-{2:.1f}".format(dataset, accuracy_dict[dataset]["accuracy"],
                                                                     accuracy_dict[dataset]["confidence"]))
@@ -57,7 +57,7 @@ def verify_checkpoint_dir(checkpoint_dir, resume, test_mode):
 
 def print_and_log(log_file, message):
     """
-    Helper function to print to the screen and the cnaps_layer_log.txt file.
+    Helper function to print to the screen and the log.txt file.
     """
     print(message, flush=True)
     log_file.write(message + '\n')

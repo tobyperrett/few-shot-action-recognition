@@ -12,6 +12,7 @@ import torchvision
 import video_reader
 import random 
 
+torch.autograd.set_detect_anomaly(True)
 
 class Learner:
     def __init__(self):
@@ -25,14 +26,12 @@ class Learner:
 
         self.writer = SummaryWriter()
         
-        gpu_device = 'cuda'
-        self.device = torch.device(gpu_device if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = self.init_model()
 
         self.video_dataset = video_reader.VideoDataset(self.args)
         self.video_loader = torch.utils.data.DataLoader(self.video_dataset, batch_size=1, num_workers=self.args.num_workers)
-        self.test_accuracies = TestAccuracies([self.args.dataset])
-
+        self.val_accuracies = TestAccuracies([self.args.dataset])
 
         self.accuracy_fn = aggregate_accuracy
         
@@ -75,15 +74,19 @@ class Learner:
         parser.add_argument("--learning_rate", "-lr", type=float, default=0.001, help="Learning rate.")
         parser.add_argument("--tasks_per_batch", type=int, default=16, help="Number of tasks between parameter optimizations.")
         parser.add_argument("--checkpoint_dir", "-c", default=None, help="Directory to save checkpoint to.")
-        parser.add_argument("--test_model_path", "-m", default=None, help="Path to model to load and test.")
+        parser.add_argument("--test_model_name", "-m", default="checkpoint_best_val.pt", help="Path to model to load and test.")
         parser.add_argument("--training_iterations", "-i", type=int, default=100020, help="Number of meta-training iterations.")
         parser.add_argument("--resume_from_checkpoint", "-r", dest="resume_from_checkpoint", default=False, action="store_true", help="Restart from latest checkpoint.")
         parser.add_argument("--way", type=int, default=5, help="Way of each task.")
         parser.add_argument("--shot", type=int, default=5, help="Shots per class.")
         parser.add_argument("--query_per_class", type=int, default=5, help="Target samples (i.e. queries) per class used for training.")
         parser.add_argument("--query_per_class_test", type=int, default=1, help="Target samples (i.e. queries) per class used for testing.")
-        parser.add_argument('--test_iters', nargs='+', type=int, help='iterations to test at. Default is for ssv2 otam split.', default=[10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000])
+
+        parser.add_argument('--val_iters', nargs='+', type=int, help='iterations to val at. Default is for ssv2 otam split.', default=[10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000])
+        parser.add_argument("--num_val_tasks", type=int, default=1000, help="number of random tasks to val on.")
+
         parser.add_argument("--num_test_tasks", type=int, default=1000, help="number of random tasks to test on.")
+
         parser.add_argument("--print_freq", type=int, default=1000, help="print and log every n iterations.")
         parser.add_argument("--seq_len", type=int, default=8, help="Frames per video.")
         parser.add_argument("--num_workers", type=int, default=10, help="Num dataloader workers.")
@@ -114,6 +117,10 @@ class Learner:
         total_iterations = self.args.training_iterations
 
         iteration = self.start_iteration
+
+        val_accuraies = [0] * 5
+        best_val_accuracy = 0
+
         for task_dict in self.video_loader:
             if iteration >= total_iterations:
                 break
@@ -129,29 +136,51 @@ class Learner:
                 self.optimizer.step()
                 self.optimizer.zero_grad()
             self.scheduler.step()
+
+            # print training stats
             if (iteration + 1) % self.args.print_freq == 0:
-                # print training stats
                 print_and_log(self.logfile,'Task [{}/{}], Train Loss: {:.7f}, Train Accuracy: {:.7f}'
                               .format(iteration + 1, total_iterations, torch.Tensor(losses).mean().item(),
                                       torch.Tensor(train_accuracies).mean().item()))
                 train_accuracies = []
                 losses = []
 
+            # save checkpoint
             if ((iteration + 1) % self.args.save_freq == 0) and (iteration + 1) != total_iterations:
                 self.save_checkpoint(iteration + 1)
 
+            # validate
+            if ((iteration + 1) in self.args.val_iters) and (iteration + 1) != total_iterations:
+                accuracy_dict = self.evaluate("val")
 
-            if ((iteration + 1) in self.args.test_iters) and (iteration + 1) != total_iterations:
-                accuracy_dict = self.test()
-                print(accuracy_dict)
-                self.test_accuracies.print(self.logfile, accuracy_dict)
+                iter_acc = accuracy_dict[self.args.dataset]["accuracy"]
+                val_accuraies.append(iter_acc)
+
+                # save checkpoint if best validation score
+                self.val_accuracies.print(self.logfile, accuracy_dict, mode="val")
+                if iter_acc > best_val_accuracy:
+                    best_val_accuracy = iter_acc
+                    self.save_checkpoint(iteration + 1, "checkpoint_best_val.pt")
+
+                # get out if best accuracy was two validations ago
+                if val_accuraies[-1] < val_accuraies[-3]:
+                    break
 
         # save the final model
-        torch.save(self.model.state_dict(), self.checkpoint_path_final)
+        self.save_checkpoint(iteration + 1, "checkpoint_final.pt")
+
+
+        # evaluate best validation model
+        self.load_checkpoint("checkpoint_best_val.pt")
+        accuracy_dict = self.evaluate("test")
+        self.val_accuracies.print(self.logfile, accuracy_dict, mode="test")
 
         self.logfile.close()
 
     def train_task(self, task_dict):
+        """
+        For one task, runs forward, calculates the loss and accuract and backprops
+        """
         task_dict = self.prepare_task(task_dict)
         model_dict = self.model(task_dict['support_set'], task_dict['support_labels'], task_dict['target_set'])
         target_logits = model_dict['logits']
@@ -163,53 +192,61 @@ class Learner:
 
         return task_loss, task_accuracy
 
-    def test(self):
+    def evaluate(self, mode="val"):
         self.model.eval()
         with torch.no_grad():
 
-                self.video_loader.dataset.split = "test"
-                accuracy_dict ={}
-                accuracies = []
-                iteration = 0
-                item = self.args.dataset
-                for task_dict in self.video_loader:
-                    if iteration >= self.args.num_test_tasks:
-                        break
-                    iteration += 1
+            self.video_loader.dataset.split = mode
+            if mode == "val":
+                n_tasks = self.args.num_val_tasks
+            elif mode == "test":
+                n_tasks = self.args.num_test_tasks
 
-                    task_dict = self.prepare_task(task_dict)
-                    model_dict = self.model(task_dict['support_set'], task_dict['support_labels'], task_dict['target_set'])
-                    target_logits = model_dict['logits']
-                    accuracy = self.accuracy_fn(target_logits, task_dict['target_labels'])
-                    accuracies.append(accuracy.item())
-                    del target_logits
+            accuracy_dict ={}
+            accuracies = []
+            iteration = 0
+            item = self.args.dataset
+            for task_dict in self.video_loader:
+                if iteration >= n_tasks:
+                    break
+                iteration += 1
 
-                accuracy = np.array(accuracies).mean() * 100.0
-                confidence = (196.0 * np.array(accuracies).std()) / np.sqrt(len(accuracies))
+                task_dict = self.prepare_task(task_dict)
+                model_dict = self.model(task_dict['support_set'], task_dict['support_labels'], task_dict['target_set'])
+                target_logits = model_dict['logits']
+                accuracy = self.accuracy_fn(target_logits, task_dict['target_labels'])
+                accuracies.append(accuracy.item())
+                del target_logits
 
-                accuracy_dict[item] = {"accuracy": accuracy, "confidence": confidence}
-                self.video_loader.dataset.split = "train"
+            accuracy = np.array(accuracies).mean() * 100.0
+            confidence = (196.0 * np.array(accuracies).std()) / np.sqrt(len(accuracies))
+
+            accuracy_dict[item] = {"accuracy": accuracy, "confidence": confidence}
+            self.video_loader.dataset.split = "train"
         self.model.train()
         
         return accuracy_dict
 
 
-    def prepare_task(self, task_dict, images_to_device = True):
+    def prepare_task(self, task_dict):
+        """
+        Remove first batch dimension (as we only ever use a batch size of 1) and move data to device.
+        """
         for k in task_dict.keys():
             task_dict[k] = task_dict[k][0].to(self.device)
         return task_dict
 
-    def save_checkpoint(self, iteration):
+    def save_checkpoint(self, iteration, name="checkpoint.pt"):
         d = {'iteration': iteration,
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'scheduler': self.scheduler.state_dict()}
 
-        torch.save(d, os.path.join(self.checkpoint_dir, 'checkpoint{}.pt'.format(iteration)))
-        torch.save(d, os.path.join(self.checkpoint_dir, 'checkpoint.pt'))
+        torch.save(d, os.path.join(self.checkpoint_dir, 'checkpoint{}.pt'.format(iteration)))   
+        torch.save(d, os.path.join(self.checkpoint_dir, name))
 
-    def load_checkpoint(self):
-        checkpoint = torch.load(os.path.join(self.checkpoint_dir, 'checkpoint.pt'))
+    def load_checkpoint(self, name="checkpoint.pt"):
+        checkpoint = torch.load(os.path.join(self.checkpoint_dir, name))
         self.start_iteration = checkpoint['iteration']
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
