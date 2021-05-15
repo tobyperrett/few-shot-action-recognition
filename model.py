@@ -395,7 +395,7 @@ class CNN_PAL(CNN_FSHead):
         unique_labels = torch.unique(task_dict["support_labels"])
         total_q_c_sim = torch.sum(q_s_sim, dim=0) + 0.1
 
-        print(total_q_c_sim)
+        #print(total_q_c_sim)
 
         q_c_sim = [torch.sum(torch.index_select(q_s_sim, 0, extract_class_indices(task_dict["target_labels"], c)), dim=0) for c in unique_labels]
         q_c_sim = torch.stack(q_c_sim)
@@ -408,7 +408,7 @@ class CNN_PAL(CNN_FSHead):
 
         l_pcc = - torch.mean(torch.log(q_c_sim))
 
-        print(l_meta, l_pcc)
+        #print(l_meta, l_pcc)
 
         return l_meta #+ l_pcc
 
