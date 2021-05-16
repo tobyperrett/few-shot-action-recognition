@@ -75,21 +75,21 @@ class Learner:
         parser.add_argument("--tasks_per_batch", type=int, default=16, help="Number of tasks between parameter optimizations.")
         parser.add_argument("--checkpoint_dir", "-c", default=None, help="Directory to save checkpoint to.")
         parser.add_argument("--test_model_name", "-m", default="checkpoint_best_val.pt", help="Path to model to load and test.")
-        parser.add_argument("--training_iterations", "-i", type=int, default=100020, help="Number of meta-training iterations.")
+        parser.add_argument("--training_iterations", "-i", type=int, default=250020, help="Number of meta-training iterations.")
         parser.add_argument("--resume_from_checkpoint", "-r", dest="resume_from_checkpoint", default=False, action="store_true", help="Restart from latest checkpoint.")
         parser.add_argument("--way", type=int, default=5, help="Way of each task.")
         parser.add_argument("--shot", type=int, default=5, help="Shots per class.")
         parser.add_argument("--query_per_class", type=int, default=5, help="Target samples (i.e. queries) per class used for training.")
         parser.add_argument("--query_per_class_test", type=int, default=1, help="Target samples (i.e. queries) per class used for testing.")
 
-        parser.add_argument('--val_iters', nargs='+', type=int, help='iterations to val at. Default is for ssv2 otam split.', default=[10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000])
+        parser.add_argument('--val_iters', nargs='+', type=int, help='iterations to val at. Default is for ssv2 otam split.', default=[10000, 20000, 30000, 50000, 70000, 100000, 150000, 200000, 250000])
         parser.add_argument("--num_val_tasks", type=int, default=1000, help="number of random tasks to val on.")
 
         parser.add_argument("--num_test_tasks", type=int, default=1000, help="number of random tasks to test on.")
 
         parser.add_argument("--print_freq", type=int, default=1000, help="print and log every n iterations.")
         parser.add_argument("--seq_len", type=int, default=8, help="Frames per video.")
-        parser.add_argument("--num_workers", type=int, default=10, help="Num dataloader workers.")
+        parser.add_argument("--num_workers", type=int, default=12, help="Num dataloader workers.")
         parser.add_argument("--backbone", choices=["resnet18", "resnet34", "resnet50"], default="resnet50", help="backbone")
         parser.add_argument("--opt", choices=["adam", "sgd"], default="sgd", help="Optimizer")
         parser.add_argument("--save_freq", type=int, default=5000, help="Number of iterations between checkpoint saves.")
@@ -152,15 +152,19 @@ class Learner:
             # validate
             if ((iteration + 1) in self.args.val_iters) and (iteration + 1) != total_iterations:
                 accuracy_dict = self.evaluate("val")
-
                 iter_acc = accuracy_dict[self.args.dataset]["accuracy"]
                 val_accuraies.append(iter_acc)
+                self.val_accuracies.print(self.logfile, accuracy_dict, mode="val")
 
                 # save checkpoint if best validation score
-                self.val_accuracies.print(self.logfile, accuracy_dict, mode="val")
                 if iter_acc > best_val_accuracy:
                     best_val_accuracy = iter_acc
                     self.save_checkpoint(iteration + 1, "checkpoint_best_val.pt")
+
+                # val on test
+                accuracy_dict = self.evaluate("test")
+                iter_acc = accuracy_dict[self.args.dataset]["accuracy"]
+                self.val_accuracies.print(self.logfile, accuracy_dict, mode="test")
 
                 # get out if best accuracy was two validations ago
                 if val_accuraies[-1] < val_accuraies[-3]:
