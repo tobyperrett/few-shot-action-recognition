@@ -151,15 +151,15 @@ class Learner:
 
             # validate
             if ((iteration + 1) in self.args.val_iters) and (iteration + 1) != total_iterations:
-                accuracy_dict = self.evaluate("val")
-                iter_acc = accuracy_dict[self.args.dataset]["accuracy"]
-                val_accuraies.append(iter_acc)
-                self.val_accuracies.print(self.logfile, accuracy_dict, mode="val")
-
-                # save checkpoint if best validation score
-                if iter_acc > best_val_accuracy:
-                    best_val_accuracy = iter_acc
-                    self.save_checkpoint(iteration + 1, "checkpoint_best_val.pt")
+#                accuracy_dict = self.evaluate("val")
+#                iter_acc = accuracy_dict[self.args.dataset]["accuracy"]
+#                val_accuraies.append(iter_acc)
+#                self.val_accuracies.print(self.logfile, accuracy_dict, mode="val")
+#
+#                # save checkpoint if best validation score
+#                if iter_acc > best_val_accuracy:
+#                    best_val_accuracy = iter_acc
+#                    self.save_checkpoint(iteration + 1, "checkpoint_best_val.pt")
 
                 # val on test
                 accuracy_dict = self.evaluate("test")

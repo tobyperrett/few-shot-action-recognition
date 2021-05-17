@@ -396,6 +396,9 @@ class CNN_PAL(CNN_FSHead):
         prototypes = torch.stack(prototypes)
 
         q_s_sim = cos_sim(target_features, prototypes)
+        
+        q_s_sim = torch.sigmoid(q_s_sim)
+
         return_dict = {'logits': q_s_sim}
 
         return return_dict
@@ -426,7 +429,7 @@ class CNN_PAL(CNN_FSHead):
 
         #print(l_meta, l_pcc)
 
-        return l_meta #+ l_pcc
+        return l_meta + l_pcc
 
 
 
@@ -457,8 +460,10 @@ if __name__ == "__main__":
     
     support_imgs = torch.rand(args.way * args.shot * args.seq_len,3, args.img_size, args.img_size).to(device)
     target_imgs = torch.rand(args.way * args.query_per_class * args.seq_len ,3, args.img_size, args.img_size).to(device)
-    support_labels = torch.tensor([0,1,2,3,4,0,1,2,3,4,0,1,2,3,4]).to(device)
-    target_labels = torch.tensor([0,1,2,3,4,0,1,2,3,4]).to(device)
+    #support_labels = torch.tensor([0,1,2,3,4,0,1,2,3,4,0,1,2,3,4]).to(device)
+    #target_labels = torch.tensor([0,1,2,3,4,0,1,2,3,4]).to(device)
+    support_labels = torch.tensor([n for n in range(args.way)] * args.shot).to(device)
+    target_labels = torch.tensor([n for n in range(args.way)] * args.query_per_class).to(device)
 
     print("Support images input shape: {}".format(support_imgs.shape))
     print("Target images input shape: {}".format(target_imgs.shape))
