@@ -1,4 +1,5 @@
 import torch
+from torch.hub import load
 from torchvision import datasets, transforms
 from PIL import Image
 import os
@@ -59,6 +60,9 @@ class Split():
         random_idx = np.random.choice(match_idxs)
         return self.videos[random_idx], random_idx
 
+    def get_single_video(self, index):
+        return self.videos[index], self.gt_a_list[index]
+
     def get_num_videos_for_class(self, label):
         return len([gt for gt in self.gt_a_list if gt == label])
 
@@ -70,9 +74,10 @@ class Split():
 
 """Dataset for few-shot videos, which returns few-shot tasks. """
 class VideoDataset(torch.utils.data.Dataset):
-    def __init__(self, args):
+    def __init__(self, args, meta_batches=True):
         self.args = args
         self.get_item_counter = 0
+        self.meta_batches = meta_batches
 
         self.split = "train"
         self.tensor_transform = transforms.ToTensor()
@@ -119,39 +124,44 @@ class VideoDataset(torch.utils.data.Dataset):
 
     """ Set len to large number as we use lots of random tasks. Stopping point controlled in run.py. """
     def __len__(self):
-        return 1000000
-  
+        if self.meta_batches:
+            return 1000000
+        else:
+            c = self.get_split()
+            return len(c)
     
     """Loads a single image from a specified path """
     def read_single_image(self, path):
         with Image.open(path) as i:
             i.load()
             return i
-    
-    """Gets a single video sequence. Handles sampling if there are more frames than specified. """
-    def get_seq(self, label, idx=-1):
-        c = self.get_split()
-        paths, vid_id = c.get_rand_vid(label, idx) 
+
+    """ loads images from paths and applies transforms """
+    def load_and_transform_paths(self, paths):
         n_frames = len(paths)
-    
         idx_f = np.linspace(0, n_frames-1, num=self.args.seq_len)
         idxs = [int(f) for f in idx_f]
-
         imgs = [self.read_single_image(paths[i]) for i in idxs]
         if (self.transform is not None):
             if self.split == "train":
                 transform = self.transform["train"]
             else:
                 transform = self.transform["test"]
-            
             imgs = [self.tensor_transform(v) for v in transform(imgs)]
             imgs = torch.stack(imgs)
-        return imgs, vid_id
+        return imgs
+    
+    """Gets a single video sequence for a meta batch. Handles sampling if there are more frames than specified. """
+    def get_seq(self, label, idx=-1):
+        c = self.get_split()
+        if self.meta_batches:
+            paths, vid_id = c.get_rand_vid(label, idx) 
+            imgs = self.load_and_transform_paths(paths)
+            return imgs, vid_id
 
 
-    """returns dict of support and target images and labels"""
-    def __getitem__(self, index):
-
+    """returns dict of support and target images and labels for a meta training task"""
+    def get_meta_batch(self, index):
         #select classes to use for this task
         c = self.get_split()
         classes = c.get_unique_classes()
@@ -202,6 +212,18 @@ class VideoDataset(torch.utils.data.Dataset):
         
         return {"support_set":support_set, "support_labels":support_labels, "target_set":target_set, "target_labels":target_labels, "real_target_labels":real_target_labels, "batch_class_list": batch_classes}
 
+    """gets a single video, used for pretraining the backbone"""
+    def get_single_vid(self, index):
+        c = self.get_split()
+        paths, gt = c.get_single_video(index)
+        vid = self.load_and_transform_paths(paths)
+        return vid, gt
+
+    def __getitem__(self, index):
+        if self.meta_batches:
+            return self.get_meta_batch(index)
+        else:
+            return self.get_single_vid(index)
 
 if __name__ == "__main__":
     class Object(object):

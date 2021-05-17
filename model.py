@@ -309,7 +309,7 @@ class CNN_OTAM(CNN_FSHead):
         dists = rearrange(frame_dists, '(tb ts) (sb ss) -> tb sb ts ss', tb = n_queries, sb = n_support)
 
         # calculate query -> support and support -> query
-        cum_dists = OTAM_cum_dist(dists)# + OTAM_cum_dist(rearrange(dists, 'tb sb ts ss -> tb sb ss ts'))
+        cum_dists = 0.5 * OTAM_cum_dist(dists) + 0.5 * OTAM_cum_dist(rearrange(dists, 'tb sb ts ss -> tb sb ss ts'))
 
         class_dists = [torch.mean(torch.index_select(cum_dists, 1, extract_class_indices(support_labels, c)), dim=1) for c in unique_labels]
         class_dists = torch.stack(class_dists)

@@ -75,15 +75,15 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
                          'multi node data parallel training')
 
 parser.add_argument('--seq_len', default=8, type=int)
-parser.add_argument("--split", type=int, default=3, help="Dataset split.")
-parser.add_argument("--scratch", choices=["bc", "bp"], default="bp", help="Computer to run on")
+# parser.add_argument("--split", type=int, default=3, help="Dataset split.")
+# parser.add_argument("--scratch", choices=["bc", "bp"], default="bp", help="Computer to run on")
 parser.add_argument("--img_size", type=int, default=224, help="Frames per video.")
-parser.add_argument("--way", type=int, default=5, help="Frames per video.")
-parser.add_argument("--shot", type=int, default=5, help="Frames per video.")
-parser.add_argument("--query_per_class", type=int, default=5, help="Frames per video.")
+# parser.add_argument("--way", type=int, default=5, help="Frames per video.")
+# parser.add_argument("--shot", type=int, default=5, help="Frames per video.")
+# parser.add_argument("--query_per_class", type=int, default=5, help="Frames per video.")
 
 
-parser.add_argument("--dataset", choices=["ssv2", "kinetics"], default="ssv2", help="Computer to run on")
+parser.add_argument("--dataset", type=str, default="data/ssv2small", help="Path to dataset")
 parser.add_argument("--n_classes", type=int, default=64, help="Frames per video.")
 parser.add_argument("out_name", type=str, help="Frames per video.")
 
@@ -132,21 +132,6 @@ class TSN(nn.Module):
 
 def main():
     args = parser.parse_args()
-
-    if args.scratch == "bc":
-        args.scratch = "/mnt/storage/home/tp8961/scratch"
-    elif args.scratch == "bp":
-        args.scratch = "/work/tp8961"
-        
-    if args.dataset == "ssv2":
-        args.traintestlist = os.path.join(args.scratch, "video_datasets/splits/somethingsomethingv2TrainTestlist")
-        args.path = os.path.join(args.scratch, "video_datasets/data/somethingsomethingv2_256x256q5_1.zip")
-    elif args.dataset == "kinetics":
-        args.traintestlist = os.path.join(args.scratch, "video_datasets/splits/kineticsTrainTestlist")
-        args.path = os.path.join(args.scratch, "video_datasets/data/kinetics_256q5_1.zip")
-    
-    
-    
     
     if args.seed is not None:
         random.seed(args.seed)
@@ -336,7 +321,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                 and args.rank % ngpus_per_node == 0):
-            torch.save(model.module.resnet.state_dict(), os.path.join(args.scratch, "pretrained_models/{}_epoch{}.pth.tar".format(args.out_name,epoch+1)))
+            torch.save(model.resnet.state_dict(), os.path.join(args.out_name, "epoch{}.pth.tar".format(epoch+1)))
             
             #save_checkpoint({
             #    'epoch': epoch + 1,
