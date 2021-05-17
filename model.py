@@ -397,7 +397,8 @@ class CNN_PAL(CNN_FSHead):
 
         q_s_sim = cos_sim(target_features, prototypes)
         
-        q_s_sim = torch.sigmoid(q_s_sim)
+        #q_s_sim = torch.sigmoid(q_s_sim)
+        #q_s_sim = F.softmax(q_s_sim, dim=-1)
 
         return_dict = {'logits': q_s_sim}
 
@@ -411,12 +412,15 @@ class CNN_PAL(CNN_FSHead):
         q_s_sim = model_dict["logits"]
         l_meta = F.cross_entropy(q_s_sim, task_dict["target_labels"].long())
 
+        pcc_q_s_sim = q_s_sim
+        #pcc_q_s_sim = torch.sigmoid(q_s_sim)
+
         unique_labels = torch.unique(task_dict["support_labels"])
-        total_q_c_sim = torch.sum(q_s_sim, dim=0) + 0.1
+        total_q_c_sim = torch.sum(pcc_q_s_sim, dim=0) + 0.1
 
         #print(total_q_c_sim)
 
-        q_c_sim = [torch.sum(torch.index_select(q_s_sim, 0, extract_class_indices(task_dict["target_labels"], c)), dim=0) for c in unique_labels]
+        q_c_sim = [torch.sum(torch.index_select(pcc_q_s_sim, 0, extract_class_indices(task_dict["target_labels"], c)), dim=0) for c in unique_labels]
         q_c_sim = torch.stack(q_c_sim)
         q_c_sim = torch.diagonal(q_c_sim)
         q_c_sim = torch.div(q_c_sim, total_q_c_sim)
