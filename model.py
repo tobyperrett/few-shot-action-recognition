@@ -413,7 +413,7 @@ class CNN_PAL(CNN_FSHead):
         l_meta = F.cross_entropy(q_s_sim, task_dict["target_labels"].long())
 
         pcc_q_s_sim = q_s_sim
-        #pcc_q_s_sim = torch.sigmoid(q_s_sim)
+        pcc_q_s_sim = torch.sigmoid(q_s_sim)
 
         unique_labels = torch.unique(task_dict["support_labels"])
         total_q_c_sim = torch.sum(pcc_q_s_sim, dim=0) + 0.1

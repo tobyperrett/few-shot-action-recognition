@@ -12,7 +12,7 @@ import torchvision
 import video_reader
 import random 
 
-torch.autograd.set_detect_anomaly(True)
+# torch.autograd.set_detect_anomaly(True)
 
 class Learner:
     def __init__(self):
@@ -163,7 +163,6 @@ class Learner:
 
                 # val on test
                 accuracy_dict = self.evaluate("test")
-                iter_acc = accuracy_dict[self.args.dataset]["accuracy"]
                 self.val_accuracies.print(self.logfile, accuracy_dict, mode="test")
 
                 # get out if best accuracy was two validations ago
@@ -174,8 +173,12 @@ class Learner:
         self.save_checkpoint(iteration + 1, "checkpoint_final.pt")
 
 
-        # evaluate best validation model
-        self.load_checkpoint("checkpoint_best_val.pt")
+        # evaluate best validation model if it exists, otherwise evaluate the final model.
+        try:
+            self.load_checkpoint("checkpoint_best_val.pt")
+        except:
+            self.load_checkpoint("checkpoint_final.pt")
+
         accuracy_dict = self.evaluate("test")
         self.val_accuracies.print(self.logfile, accuracy_dict, mode="test")
 
@@ -223,6 +226,7 @@ class Learner:
                 del target_logits
 
             accuracy = np.array(accuracies).mean() * 100.0
+            # 95% confidence interval
             confidence = (196.0 * np.array(accuracies).std()) / np.sqrt(len(accuracies))
 
             accuracy_dict[item] = {"accuracy": accuracy, "confidence": confidence}

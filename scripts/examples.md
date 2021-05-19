@@ -17,4 +17,5 @@ python run.py -c /work/tp8961/tmpfsar/tsn_ssv2-tpb1-lr0.001 --dataset /work/tp89
 
 python run.py -c /work/tp8961/tmpfsar/otam_ssv2-tpb16-lr0.001 --dataset /work/tp8961/video_datasets/data/somethingsomethingv2_256x256q5_7l8  --method otam  --tasks_per_batch 16
 
-python run.py -c /work/tp8961/tmpfsar/otambd_ssv2-tpb1-lr0.001 --dataset /work/tp8961/video_datasets/data/somethingsomethingv2_256x256q5_7l8  --method otam  --tasks_per_batch 1
+python run.py -c /work/tp8961/tmpfsar/otambd_ssv2-tpb1-lr0.001 --dataset /work/tp8961/video_datasets/data/somethingsomethingv2_256x256q5_7l8  --method otam  --tasks_per_batch 1 -r --val_iters 20020 30000 50000 70000 100000 --num_workers 6
+

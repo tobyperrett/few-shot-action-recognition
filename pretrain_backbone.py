@@ -25,11 +25,11 @@ model_names = sorted(name for name in models.__dict__
     and callable(models.__dict__[name]))
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
-                    choices=model_names,
-                    help='model architecture: ' +
-                        ' | '.join(model_names) +
-                        ' (default: resnet18)')
+# parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
+#                     choices=model_names,
+#                     help='model architecture: ' +
+#                         ' | '.join(model_names) +
+#                         ' (default: resnet18)')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
@@ -84,7 +84,7 @@ parser.add_argument("--img_size", type=int, default=224, help="Frames per video.
 
 
 parser.add_argument("--dataset", type=str, default="data/ssv2small", help="Path to dataset")
-parser.add_argument("--n_classes", type=int, default=64, help="Frames per video.")
+# parser.add_argument("--n_classes", type=int, default=64, help="Frames per video.")
 parser.add_argument("out_name", type=str, help="Frames per video.")
 
 
@@ -97,7 +97,7 @@ class TSN(nn.Module):
     def __init__(self):
         super(TSN, self).__init__()
         last_layer_idx = -1
-        self.resnet = models.resnet50(pretrained=True)
+        self.backbone = models.resnet50(pretrained=True)
         #self.resnet = nn.Sequential(*list(self.resnet.children())[:last_layer_idx])
         #self.linear = nn.Linear(2048, 200)
         
@@ -111,7 +111,7 @@ class TSN(nn.Module):
     def forward(self, x):
         b, s, c, h, w = x.shape
         x = x.reshape(b*s, c, h, w)
-        x = self.resnet(x)
+        x = self.backbone(x)
         
         # use custom linear layer
         x = torch.squeeze(x)
@@ -321,7 +321,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                 and args.rank % ngpus_per_node == 0):
-            torch.save(model.resnet.state_dict(), os.path.join(args.out_name, "epoch{}.pth.tar".format(epoch+1)))
+            torch.save(model.backbone.state_dict(), os.path.join(args.out_name, "epoch{}.pth.tar".format(epoch+1)))
             
             #save_checkpoint({
             #    'epoch': epoch + 1,

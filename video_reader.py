@@ -14,6 +14,7 @@ from glob import glob
 from videotransforms.video_transforms import Compose, Resize, RandomCrop, RandomRotation, ColorJitter, RandomHorizontalFlip, CenterCrop, TenCrop
 from videotransforms.volume_transforms import ClipToTensor
 
+
 """Contains video frame paths and ground truth labels for a single split (e.g. train videos). """
 class Split():
     def __init__(self, folder, args):
@@ -136,7 +137,7 @@ class VideoDataset(torch.utils.data.Dataset):
             i.load()
             return i
 
-    """ loads images from paths and applies transforms """
+    """ loads images from paths and applies transforms. Handles sampling if there are more frames than specified. """
     def load_and_transform_paths(self, paths):
         n_frames = len(paths)
         idx_f = np.linspace(0, n_frames-1, num=self.args.seq_len)
@@ -151,7 +152,7 @@ class VideoDataset(torch.utils.data.Dataset):
             imgs = torch.stack(imgs)
         return imgs
     
-    """Gets a single video sequence for a meta batch. Handles sampling if there are more frames than specified. """
+    """Gets a single video sequence for a meta batch.  """
     def get_seq(self, label, idx=-1):
         c = self.get_split()
         if self.meta_batches:
