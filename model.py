@@ -31,6 +31,10 @@ class CNN_FSHead(nn.Module):
         elif self.args.backbone == "resnet50":
             backbone = models.resnet50(pretrained=True)
 
+        if self.args.pretrained_backbone is not None:
+            checkpoint = torch.load(self.args.pretrained_backbone)
+            backbone.load_state_dict(checkpoint)
+
         last_layer_idx = -1
         self.backbone = nn.Sequential(*list(backbone.children())[:last_layer_idx])
 
@@ -120,7 +124,6 @@ class TemporalCrossTransformer(nn.Module):
         # generate all tuples
         frame_idxs = [i for i in range(self.args.seq_len)]
         frame_combinations = combinations(frame_idxs, temporal_set_size)
-        # self.tuples = [torch.tensor(comb).cuda() for comb in frame_combinations]
         self.tuples = nn.ParameterList([nn.Parameter(torch.tensor(comb), requires_grad=False) for comb in frame_combinations])
         self.tuples_len = len(self.tuples) 
     
@@ -267,7 +270,7 @@ def OTAM_cum_dist(dists, lbda=0.1):
         #last column
         cum_dists[:,:,l,-1] = dists[:,:,l,-1] - lbda * torch.log( torch.exp(- cum_dists[:,:,l-1,-2] / lbda) + torch.exp(- cum_dists[:,:,l,-2] / lbda) )
 
-    # no error with pytorch 1.3. Perhaps it's a silent error?
+    # no error with pytorch 1.3, but errors with 1.8. Perhaps it's a silent error?
     # # remaining rows
     # for l in range(1,dists.shape[2]):
     #     #first non-zero column
@@ -433,7 +436,7 @@ class CNN_PAL(CNN_FSHead):
 
         #print(l_meta, l_pcc)
 
-        l_lambda = 0.1
+        l_lambda = 1#0.1
         return l_meta + l_lambda * l_pcc
 
 
@@ -465,8 +468,6 @@ if __name__ == "__main__":
     
     support_imgs = torch.rand(args.way * args.shot * args.seq_len,3, args.img_size, args.img_size).to(device)
     target_imgs = torch.rand(args.way * args.query_per_class * args.seq_len ,3, args.img_size, args.img_size).to(device)
-    #support_labels = torch.tensor([0,1,2,3,4,0,1,2,3,4,0,1,2,3,4]).to(device)
-    #target_labels = torch.tensor([0,1,2,3,4,0,1,2,3,4]).to(device)
     support_labels = torch.tensor([n for n in range(args.way)] * args.shot).to(device)
     target_labels = torch.tensor([n for n in range(args.way)] * args.query_per_class).to(device)
 

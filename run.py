@@ -98,6 +98,8 @@ class Learner:
         parser.add_argument('--sch', nargs='+', type=int, help='iters to drop learning rate', default=[1000000])
         parser.add_argument("--method", choices=["trx", "otam", "tsn", "pal"], default="trx", help="few-shot method to use")
 
+        parser.add_argument("--pretrained_backbone", "-pt", type=str, default=None, help="pretrained backbone path")
+
         args = parser.parse_args()
         
         if args.checkpoint_dir == None:
