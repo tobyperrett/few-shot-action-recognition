@@ -7,7 +7,7 @@ import numpy as np
 max_seq_len = 8
 
 old_dir = "data/ssv2_256x256q5"
-new_dir = "data/data/ssv2_256x256q5_l{}".format(max_seq_len)
+new_dir = "data/ssv2_256x256q5_l{}".format(max_seq_len)
 
 classes = [j for j in glob.glob(os.path.join(old_dir, "*"))]
 
