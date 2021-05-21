@@ -1,34 +1,47 @@
 # Few Shot Action Recognition Library
 
-This repo contains implentations of some few-shot action recognition methods, as they tend not to have public code. Features are:
+This repo contains implentations of few-shot action recognition methods using a shared codebase, as they tend not to have public code. I intend to keep it up to date so there's a common resource for people interested in this topic. Feature/method/pull requests are welcome.
 
-- Scripts to extract/format datasets
+Key features include:
+
+- Scripts to extract/format datasets using public splits
 - Easy to use data loader for creating episodic tasks (just uses folders of images so is much easier to get working than the TRX zip version)
-- Implementations of SOTA methods using standard backbones to allow direct comparisons
+- Implementations of SOTA methods using standard backbones and codebase to allow direct comparisons
 - Train/val/test framework for running everything
 
 Implementations include:
 
-- Episodic TSN baseline
-- TRX
-- OTAM
+- Episodic TSN baseline (as proposed in OTAM)
+- [TRX](https://arxiv.org/abs/2101.06184) (CVPR 2021)
+- [OTAM](https://openaccess.thecvf.com/content_CVPR_2020/papers/Cao_Few-Shot_Video_Classification_via_Temporal_Alignment_CVPR_2020_paper.pdf) (CVPR 2020)
 
 Implementation todo list:
-- CMN
-- PAL
+- CMN (ECCV 2018)
+- PAL (arXiv 2021)
     
 
 Datasets supported:
 
-- Something-Something V2 (splits from OTAM)
-- UCF101 (splits from ARN)
-- HMDB51 (splits from ARN)
+- Something-Something V2 ([splits from OTAM](https://openaccess.thecvf.com/content_CVPR_2020/papers/Cao_Few-Shot_Video_Classification_via_Temporal_Alignment_CVPR_2020_paper.pdf))
+- UCF101 ([splits from ARN](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123500511.pdf))
+- HMDB51 ([splits from ARN](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123500511.pdf))
 
-I've chosen not to support Kinetics because the full dataset doesn't exist (videos are continually removed from youtube/marked as private) so results aren't repeatable. It's a pain to download as youtube can randomly block you scraping. Additionaly, it's not a very good test of few-shot action recognition methods as classes can be distinguised by appearance alone, which means it doesn't test temporal understanding.
+I've chosen not to support Kinetics because the full dataset doesn't exist (videos are continually removed from youtube/marked as private) meaning results aren't repeatable, and it's a pain to download the videos which are still there as youtube can randomly block you scraping. Additionaly, it's not a very good test of few-shot action recognition methods as classes can be distinguised by appearance alone, which means it doesn't test temporal understanding.
 
-Feature/method/pull requests are welcome.
 
 # Instructions
+
+## Installation
+
+Conda is recommended. To use a ResNet 50 backbone you'll need at least a 4 x 11GPU machine. You can fit everything all on one GPU using a ResNet 18 backbone.
+
+### Requirements
+
+- python >= 3.6
+- pytorch >= 1.8
+- einops
+- ffmpeg (for extracting data)
+
 
 ## Data preparation
 
@@ -37,7 +50,7 @@ To remove unnecessary frames and save space (i.e. just leave 8 uniformly sampled
 
 ## Running
 
-Use run.py. Example arguments for some training runs are in the scripts folder.
+Use run.py. Example arguments for some training runs are in the scripts folder. You might need to modify the distribute functions in model.py to suit your system depending on your GPU configuration.
 
 # Citation
 
@@ -45,26 +58,25 @@ If you find this code helpful, please cite the technical report:
 
 And the paper this code is based on:
 
+	@inproceedings{perrett2021trx,
+	title = {Temporal Relational CrossTransformers for Few-Shot Action Recognition}
+	booktitle = {Computer Vision and Pattern Recognition}
+	year = {2021}}
+
+And of course the original papers containing the respective methods.
 
 
-And of course the original papers of the methods:
 
 
 
 
-# Requirements
 
-    python > 3.6
-    pytorch > 1.8
-    einops
-    ffmpeg (for extracting data)
 
 # Acnkowledgements
 
-Based on CNAPs
+We based our code on [CNAPs](https://github.com/cambridge-mlg/cnaps) (logging, training, evaluation etc.). We use [torch_videovision](https://github.com/hassony2/torch_videovision) for video transforms.
 
 
 
 
 
-get rid of iteration + 1?
