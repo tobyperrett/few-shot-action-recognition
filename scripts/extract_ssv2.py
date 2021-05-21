@@ -26,10 +26,18 @@ except:
     pass
 
 
-classes = []
-vids = []
 for fn in glob(wc):
+    classes = []
+    vids = []
+
     print(fn)
+    if "train" in fn:
+        cur_split = "train"
+    elif "val" in fn:
+        cur_split = "val"
+    elif "test" in fn:
+        cur_split = "test"
+
     with open(fn, "r") as f:
         data = f.readlines()
         c = [x.split(os.sep)[-2].strip() for x in data]
@@ -37,33 +45,36 @@ for fn in glob(wc):
         vids.extend(v)
         classes.extend(c)
 
-
-for c in list(set(classes)):
     try:
-        os.mkdir(os.path.join(out_folder, c))
+        os.mkdir(os.path.join(out_folder, cur_split))
     except:
         pass
 
+    for c in list(set(classes)):
+        try:
+            os.mkdir(os.path.join(out_folder, cur_split, c))
+        except:
+            pass
 
+    cmds = []
+    for v, c in zip(vids, classes):
+        source_vid = os.path.join(in_folder, "{}.webm".format(v))
+        extract_dir = os.path.join(out_folder, cur_split, c, v)
 
-cmds = []
+        if os.path.exists(extract_dir):
+            continue
 
-for v, c in zip(vids, classes):
-    source_vid = os.path.join(in_folder, "{}.webm".format(v))
-    extract_dir = os.path.join(out_folder, c, v)
+        out_wc = os.path.join(extract_dir, '%08d.jpg')
 
-    if os.path.exists(extract_dir):
-        continue
+        print(source_vid, out_wc)
 
-    out_wc = os.path.join(extract_dir, '%08d.jpg')
-    #scale_string = 'scale=-1:{}'.format( out_h)
-    scale_string = 'scale={}:{}'.format(out_w, out_h)
-    os.mkdir(extract_dir)
-    try:
-        cmd = ['ffmpeg', '-i', source_vid, '-vf', scale_string, '-q:v', '5', out_wc]
+        scale_string = 'scale={}:{}'.format(out_w, out_h)
+        os.mkdir(extract_dir)
+        try:
+            cmd = ['ffmpeg', '-i', source_vid, '-vf', scale_string, '-q:v', '5', out_wc]
 
-        cmds.append((cmd, extract_dir))
-        subprocess.call(cmd)
-    except:
-        pass
-#Parallel(n_jobs=8, require='sharedmem')(delayed(run_cmd)(cmds[i]) for i in range(0, len(cmds)))
+            cmds.append((cmd, extract_dir))
+            subprocess.call(cmd)
+        except:
+            pass
+    #Parallel(n_jobs=8, require='sharedmem')(delayed(run_cmd)(cmds[i]) for i in range(0, len(cmds)))
