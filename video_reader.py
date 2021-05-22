@@ -158,6 +158,7 @@ class VideoDataset(torch.utils.data.Dataset):
         if self.meta_batches:
             paths, vid_id = c.get_rand_vid(label, idx) 
             imgs = self.load_and_transform_paths(paths)
+            
             return imgs, vid_id
 
 
@@ -218,6 +219,9 @@ class VideoDataset(torch.utils.data.Dataset):
         c = self.get_split()
         paths, gt = c.get_single_video(index)
         vid = self.load_and_transform_paths(paths)
+
+
+        return {"images": vid, "target_labels": gt}
         return vid, gt
 
     def __getitem__(self, index):
