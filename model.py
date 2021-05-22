@@ -72,6 +72,32 @@ class CNN_FSHead(nn.Module):
         """
         pass
 
+class Pretrain_CNN_TSN(CNN_FSHead):
+    """
+    TSN with a CNN backbone. Cosine similarity as distance measure.
+    """
+    def __init__(self, args):
+        super(Pretrain_CNN_TSN, self).__init__(args)
+        self.linear = torch.nn.Linear(self.args.trans_linear_in_dim, 100)
+
+    def forward(self, images):
+        b, s, c, h, w = images.shape
+        images = rearrange(images, 'b s c h w -> (b s) c h w')
+
+        features = self.backbone(images).squeeze()
+        features = rearrange(features, '(b s) d -> b s d', b=b)
+
+        features = torch.mean(features, dim=1)
+
+        features = self.linear(features)
+
+        return_dict = {'logits': features}
+
+        return return_dict
+
+    def loss(self, task_dict, model_dict):
+        return F.cross_entropy(model_dict["logits"], task_dict["target_labels"].long())
+
 
 
 class PositionalEncoding(nn.Module):
