@@ -437,7 +437,7 @@ class CNN_PAL(CNN_FSHead):
         #print(l_meta, l_pcc)
 
         l_lambda = 1#0.1
-        return l_meta# + l_lambda * l_pcc
+        return l_meta + l_lambda * l_pcc
 
 
 
