@@ -220,8 +220,7 @@ class VideoDataset(torch.utils.data.Dataset):
         paths, gt = c.get_single_video(index)
         vid = self.load_and_transform_paths(paths)
 
-
-        return {"images": vid, "target_labels": gt}
+        #return {"images": vid, "target_labels": gt}
         return vid, gt
 
     def __getitem__(self, index):

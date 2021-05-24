@@ -1,3 +1,8 @@
+"""
+Script to pretrain the backbone on the training set, as used in PAL. Adapted from example imagnet distributed training code.
+"""
+
+
 import argparse
 import os
 import random
@@ -32,7 +37,7 @@ parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 #                         ' (default: resnet18)')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
-parser.add_argument('--epochs', default=70, type=int, metavar='N',
+parser.add_argument('--epochs', default=71, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
@@ -232,7 +237,6 @@ def main_worker(gpu, ngpus_per_node, args):
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
 
-
     # optionally resume from a checkpoint
     if args.resume:
         if os.path.isfile(args.resume):
@@ -302,10 +306,6 @@ def main_worker(gpu, ngpus_per_node, args):
         if args.distributed:
             train_sampler.set_epoch(epoch)
         adjust_learning_rate(optimizer, epoch, args)
-
-
-
-
 
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, args)

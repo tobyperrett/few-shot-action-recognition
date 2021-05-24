@@ -5,7 +5,7 @@ import os
 import pickle
 
 from torch._C import memory_format
-from utils import print_and_log, get_log_files, TestAccuracies, aggregate_accuracy, verify_checkpoint_dir
+from utils import print_and_log, get_log_files, TestAccuracies, aggregate_accuracy, pt_accuracy, verify_checkpoint_dir
 from model import Pretrain_CNN_TSN
 
 from torch.optim.lr_scheduler import MultiStepLR
@@ -30,10 +30,11 @@ class Learner:
         self.model = self.init_model()
 
         self.video_dataset = video_reader.VideoDataset(self.args, meta_batches=False)
-        self.video_loader = torch.utils.data.DataLoader(self.video_dataset, batch_size=self.args.batch_size, num_workers=self.args.num_workers)
+        self.video_loader = torch.utils.data.DataLoader(self.video_dataset, batch_size=self.args.batch_size, num_workers=self.args.num_workers, shuffle=True)
         self.val_accuracies = TestAccuracies([self.args.dataset])
 
         self.accuracy_fn = aggregate_accuracy
+#        self.accuracy_fn = pt_accuracy
         
         if self.args.opt == "adam":
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
@@ -50,7 +51,8 @@ class Learner:
     def init_model(self):
         if self.args.method == "pt_tsn":
             model = Pretrain_CNN_TSN(self.args)
-
+        
+        model = model.to(self.device)
         model = torch.nn.DataParallel(model, device_ids=[i for i in range(self.args.num_gpus)])
         return model
 
@@ -75,9 +77,9 @@ class Learner:
 
         parser.add_argument('--val_iters', nargs='+', type=int, help='iterations to val at. Default is for ssv2 otam split.', default=[30, 60, 70])
 
-        parser.add_argument("--print_freq", type=int, default=1000, help="print and log every n iterations.")
+        parser.add_argument("--print_freq", type=int, default=1, help="print and log every n iterations.")
         parser.add_argument("--seq_len", type=int, default=8, help="Frames per video.")
-        parser.add_argument("--num_workers", type=int, default=12, help="Num dataloader workers.")
+        parser.add_argument("--num_workers", type=int, default=8, help="Num dataloader workers.")
         parser.add_argument("--backbone", choices=["resnet18", "resnet34", "resnet50"], default="resnet50", help="backbone")
         parser.add_argument("--opt", choices=["adam", "sgd"], default="sgd", help="Optimizer")
         parser.add_argument("--save_freq", type=int, default=5, help="Number of iterations between checkpoint saves.")
@@ -85,8 +87,9 @@ class Learner:
         parser.add_argument("--num_gpus", type=int, default=4, help="Number of GPUs to split the ResNet over")
         parser.add_argument('--sch', nargs='+', type=int, help='iters to drop learning rate', default=[30,60])
         parser.add_argument("--method", choices=["pt_tsn"], default="pt_tsn", help="pre_train backbone method to use")
-        parser.add_argument("--batch_size", "-b", type=int, default=4, help="Batch size")
+        parser.add_argument("--batch_size", "-b", type=int, default=56, help="Batch size")
         parser.add_argument("--epochs", type=int, default=70, help="Total epochs to train for")
+        parser.add_argument("--pretrained_backbone", "-pt", type=str, default=None, help="pretrained backbone path")
 
         args = parser.parse_args()
         
@@ -139,12 +142,9 @@ class Learner:
 
             if ((epoch + 1) % self.args.save_freq == 0):
                 self.save_checkpoint(epoch + 1)
-                print("save")
             
             # validate
             if ((epoch + 1) in self.args.val_iters):
-                print("val")
-
                 accuracy_dict = self.evaluate("val")
                 iter_acc = accuracy_dict[self.args.dataset]["accuracy"]
                 val_accuraies.append(iter_acc)
@@ -234,8 +234,9 @@ class Learner:
         d = {'epoch': epoch,
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
-            'scheduler': self.scheduler.state_dict()}
-
+            'scheduler': self.scheduler.state_dict(),
+            'backbone': self.model.module.backbone.state_dict()}
+        
         torch.save(d, os.path.join(self.checkpoint_dir, 'checkpoint{}.pt'.format(epoch)))   
         torch.save(d, os.path.join(self.checkpoint_dir, name))
 

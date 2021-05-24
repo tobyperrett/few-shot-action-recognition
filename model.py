@@ -24,6 +24,8 @@ class CNN_FSHead(nn.Module):
         self.train()
         self.args = args
 
+        last_layer_idx = -1
+        
         if self.args.backbone == "resnet18":
             backbone = models.resnet18(pretrained=True)  
         elif self.args.backbone == "resnet34":
@@ -33,9 +35,14 @@ class CNN_FSHead(nn.Module):
 
         if self.args.pretrained_backbone is not None:
             checkpoint = torch.load(self.args.pretrained_backbone)
+              
+#            if "backbone" in checkpoint.keys():
+#                #self.backbone = nn.Sequential(*list(backbone.children())[:last_layer_idx])
+#                backbone.load_state_dict(checkpoint["backbone"])
+#                return 
+            
             backbone.load_state_dict(checkpoint)
 
-        last_layer_idx = -1
         self.backbone = nn.Sequential(*list(backbone.children())[:last_layer_idx])
 
     def get_feats(self, support_images, target_images):
@@ -82,7 +89,13 @@ class Pretrain_CNN_TSN(CNN_FSHead):
     """
     def __init__(self, args):
         super(Pretrain_CNN_TSN, self).__init__(args)
-        self.linear = torch.nn.Linear(self.args.trans_linear_in_dim, 100)
+        n_classes = 100
+
+        # use for linear classifier
+        self.linear = torch.nn.Linear(self.args.trans_linear_in_dim, n_classes)
+
+        #use for cos sim
+        self.class_centres = nn.Parameter(torch.zeros(n_classes, self.args.trans_linear_in_dim)) 
 
     def forward(self, images):
         b, s, c, h, w = images.shape
@@ -90,13 +103,16 @@ class Pretrain_CNN_TSN(CNN_FSHead):
 
         features = self.backbone(images).squeeze()
         features = rearrange(features, '(b s) d -> b s d', b=b)
-
+        
         features = torch.mean(features, dim=1)
 
-        features = self.linear(features)
+        # use for linear classifier
+#        features = self.linear(features)
+
+        # use for cos sim classifier
+        features = cos_sim(features, self.class_centres)
 
         return_dict = {'logits': features}
-
         return return_dict
 
     def loss(self, task_dict, model_dict):

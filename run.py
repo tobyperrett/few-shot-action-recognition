@@ -89,7 +89,7 @@ class Learner:
 
         parser.add_argument("--print_freq", type=int, default=1000, help="print and log every n iterations.")
         parser.add_argument("--seq_len", type=int, default=8, help="Frames per video.")
-        parser.add_argument("--num_workers", type=int, default=12, help="Num dataloader workers.")
+        parser.add_argument("--num_workers", type=int, default=8, help="Num dataloader workers.")
         parser.add_argument("--backbone", choices=["resnet18", "resnet34", "resnet50"], default="resnet50", help="backbone")
         parser.add_argument("--opt", choices=["adam", "sgd"], default="sgd", help="Optimizer")
         parser.add_argument("--save_freq", type=int, default=5000, help="Number of iterations between checkpoint saves.")

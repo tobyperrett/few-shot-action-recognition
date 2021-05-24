@@ -109,4 +109,14 @@ def aggregate_accuracy(test_logits_sample, test_labels):
     # averaged_predictions = torch.logsumexp(test_logits_sample, dim=0)
     return torch.mean(torch.eq(test_labels, torch.argmax(test_logits_sample, dim=-1)).float())
 
+def pt_accuracy(test_logits, test_labels):
+    print(test_logits.shape, test_labels.shape)
+    amax = torch.argmax(test_logits, dim=-1)
+    print(amax, test_labels)
+    return
+
+
+
+
+
 
