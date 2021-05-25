@@ -1,6 +1,6 @@
 # Few Shot Action Recognition Library
 
-This repo contains implentations of few-shot action recognition methods using a shared codebase, as they tend not to have public code. I intend to keep it up to date so there's a common resource for people interested in this topic. Feature/method/pull requests are welcome.
+This repo contains implentations of few-shot action recognition methods using a shared codebase, as they tend not to have public code. I intend to keep it up to date so there's a common resource for people interested in this topic. Feature/method/pull requests are welcome, along with any suggestions or questions.
 
 Key features include:
 
@@ -14,11 +14,13 @@ Implementations include:
 - Episodic TSN baseline (as proposed in OTAM)
 - [TRX](https://arxiv.org/abs/2101.06184) (CVPR 2021)
 - [OTAM](https://openaccess.thecvf.com/content_CVPR_2020/papers/Cao_Few-Shot_Video_Classification_via_Temporal_Alignment_CVPR_2020_paper.pdf) (CVPR 2020)
+- [PAL](https://arxiv.org/abs/2101.08085) (arXiv 2021) Currently in progress as results here are around 2% worse than in the paper
 
 Implementation todo list:
+
 - CMN (ECCV 2018)
-- PAL (arXiv 2021)
-    
+- Any other suggestions you think would be useful
+
 
 Datasets supported:
 
@@ -33,7 +35,7 @@ I've chosen not to support Kinetics because the full dataset doesn't exist (vide
 
 ## Installation
 
-Conda is recommended. To use a ResNet 50 backbone you'll need at least a 4 x 11GPU machine. You can fit everything all on one GPU using a ResNet 18 backbone.
+Conda is recommended. 
 
 ### Requirements
 
@@ -42,8 +44,18 @@ Conda is recommended. To use a ResNet 50 backbone you'll need at least a 4 x 11G
 - einops
 - ffmpeg (for extracting data)
 
+### Hardware
+
+To use a ResNet 50 backbone you'll need at least a 4 x 11GPU machine. You can fit everything all on one GPU using a ResNet 18 backbone.
+
 
 ## Data preparation
+
+Download the datasets from their original locations:
+
+- [Something-Something V2](https://20bn.com/datasets/something-something#download)
+- [UCF101](https://www.crcv.ucf.edu/data/UCF101.php)
+- [HMDB51](https://serre-lab.clps.brown.edu/resource/hmdb-a-large-human-motion-database/#Downloads)
 
 Once you've downloaded the datasets, you can use the extract scripts to extract frames and put them in train/val/test folders. You'll need to modify the paths at the top of the scripts.
 To remove unnecessary frames and save space (i.e. just leave 8 uniformly sampled frames), you can use shrink_dataset.py.
