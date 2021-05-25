@@ -20,6 +20,7 @@ def args():
             self.backbone = "resnet18"
             self.num_gpus = 1
             self.temp_set = [2,3]
+            self.pretrained_backbone=None
     args = ArgsObject()
     return args
 
@@ -48,7 +49,7 @@ def test_model_return_shapes(arch, task_dict, args):
 
 
 @pytest.mark.parametrize("arch", [CNN_TRX, CNN_OTAM, CNN_TSN, CNN_PAL])
-def test_backbone_changes(arch, task_dict, args):
+def test_backbone_trains(arch, task_dict, args):
     device = 'cpu'
     model = arch(args).to(device)
     opt = torch.optim.SGD(model.parameters(), lr=1.0)
@@ -63,6 +64,10 @@ def test_backbone_changes(arch, task_dict, args):
     final_weights = model.backbone[-2][-1].conv2.weight
 
     assert not np.array_equal(init_weights, final_weights)
+
+def test_pal_pretrained_backbone_loads(args):
+    args.pretrained_backbone = "pretrained_backbones/ssv2_tsn_R50_epoch70.pth.tar"
+    model = CNN_PAL(args)
 
 
 
