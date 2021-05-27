@@ -5,6 +5,18 @@ import math
 from enum import Enum
 import sys
 
+def cos_sim(x, y, epsilon=0.01):
+    """
+    Calculates the cosine similarity between the last dimension of two tensors.
+    """
+    numerator = torch.matmul(x, y.transpose(-1,-2))
+    xnorm = torch.norm(x, dim=-1).unsqueeze(-1)
+    ynorm = torch.norm(y, dim=-1).unsqueeze(-1)
+    denominator = torch.matmul(xnorm, ynorm.transpose(-1,-2)) + epsilon
+    dists = torch.div(numerator, denominator)
+    return dists
+
+
 def extract_class_indices(labels, which_class):
     """
     Helper method to extract the indices of elements which have the specified label.
@@ -82,38 +94,12 @@ def get_log_files(checkpoint_dir, resume, test_mode):
     return checkpoint_dir, logfile, checkpoint_path_validation, checkpoint_path_final
 
 
-
-# def loss(test_logits_sample, test_labels, device):
-#     """
-#     Compute the classification loss.
-#     """
-#     size = test_logits_sample.size()
-#     sample_count = size[0]  # scalar for the loop counter
-#     num_samples = torch.tensor([sample_count], dtype=torch.float, device=device, requires_grad=False)
-
-#     log_py = torch.empty(size=(size[0], size[1]), dtype=torch.float, device=device)
-#     for sample in range(sample_count):
-#         log_py[sample] = -F.cross_entropy(test_logits_sample[sample], test_labels, reduction='none')
-#     score = torch.logsumexp(log_py, dim=0) - torch.log(num_samples)
-#     return -torch.sum(score, dim=0)
-
-
 def aggregate_accuracy(test_logits_sample, test_labels):
     """
     Compute classification accuracy.
     """
-
-    # averaged_predictions = torch.logsumexp(test_logits_sample, dim=0)
-    # return torch.mean(torch.eq(test_labels, torch.argmax(averaged_predictions, dim=-1)).float())
-
-    # averaged_predictions = torch.logsumexp(test_logits_sample, dim=0)
     return torch.mean(torch.eq(test_labels, torch.argmax(test_logits_sample, dim=-1)).float())
 
-def pt_accuracy(test_logits, test_labels):
-    print(test_logits.shape, test_labels.shape)
-    amax = torch.argmax(test_logits, dim=-1)
-    print(amax, test_labels)
-    return
 
 
 

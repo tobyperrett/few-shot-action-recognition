@@ -15,8 +15,8 @@ from videotransforms.video_transforms import Compose, Resize, RandomCrop, Random
 from videotransforms.volume_transforms import ClipToTensor
 
 
-"""Contains video frame paths and ground truth labels for a single split (e.g. train videos). """
 class Split():
+    """Contains video frame paths and ground truth labels for a single split (e.g. train videos). """
     def __init__(self, folder, args):
         self.args = args
         
@@ -73,8 +73,8 @@ class Split():
     def __len__(self):
         return len(self.gt_a_list)
 
-"""Dataset for few-shot videos, which returns few-shot tasks. """
 class VideoDataset(torch.utils.data.Dataset):
+    """Dataset for few-shot videos, which returns few-shot tasks. """
     def __init__(self, args, meta_batches=True):
         self.args = args
         self.get_item_counter = 0
@@ -90,8 +90,8 @@ class VideoDataset(torch.utils.data.Dataset):
         self.setup_transforms()
 
 
-    """Setup crop sizes/flips for augmentation during training and centre crop for testing"""
     def setup_transforms(self):
+        """Setup crop sizes/flips for augmentation during training and centre crop for testing"""
         video_transform_list = []
         video_test_list = []
             
@@ -114,8 +114,8 @@ class VideoDataset(torch.utils.data.Dataset):
         self.transform["test"] = Compose(video_test_list)
     
 
-    """ return the current split being used """
     def get_split(self):
+        """ return the current split being used """
         if self.split == "train":
             return self.train_split
         elif self.split == "val":
@@ -123,22 +123,22 @@ class VideoDataset(torch.utils.data.Dataset):
         elif self.split == "test":
             return self.test_split
 
-    """ Set len to large number as we use lots of random tasks. Stopping point controlled in run.py. """
     def __len__(self):
+        """ Set len to large number as we use lots of random tasks. Stopping point controlled in run.py. """
         if self.meta_batches:
             return 1000000
         else:
             c = self.get_split()
             return len(c)
     
-    """Loads a single image from a specified path """
     def read_single_image(self, path):
+        """Loads a single image from a specified path """
         with Image.open(path) as i:
             i.load()
             return i
 
-    """ loads images from paths and applies transforms. Handles sampling if there are more frames than specified. """
     def load_and_transform_paths(self, paths):
+        """ loads images from paths and applies transforms. Handles sampling if there are more frames than specified. """
         n_frames = len(paths)
         idx_f = np.linspace(0, n_frames-1, num=self.args.seq_len)
         idxs = [int(f) for f in idx_f]
@@ -152,8 +152,8 @@ class VideoDataset(torch.utils.data.Dataset):
             imgs = torch.stack(imgs)
         return imgs
     
-    """Gets a single video sequence for a meta batch.  """
     def get_seq(self, label, idx=-1):
+        """Gets a single video sequence for a meta batch.  """
         c = self.get_split()
         if self.meta_batches:
             paths, vid_id = c.get_rand_vid(label, idx) 
@@ -162,8 +162,8 @@ class VideoDataset(torch.utils.data.Dataset):
             return imgs, vid_id
 
 
-    """returns dict of support and target images and labels for a meta training task"""
     def get_meta_batch(self, index):
+        """returns dict of support and target images and labels for a meta training task"""
         #select classes to use for this task
         c = self.get_split()
         classes = c.get_unique_classes()
@@ -182,8 +182,6 @@ class VideoDataset(torch.utils.data.Dataset):
         real_target_labels = []
 
         for bl, bc in enumerate(batch_classes):
-            
-            #select shots from the chosen classes
             n_total = c.get_num_videos_for_class(bc)
             idxs = random.sample([i for i in range(n_total)], self.args.shot + n_queries)
 
@@ -214,8 +212,8 @@ class VideoDataset(torch.utils.data.Dataset):
         
         return {"support_set":support_set, "support_labels":support_labels, "target_set":target_set, "target_labels":target_labels, "real_target_labels":real_target_labels, "batch_class_list": batch_classes}
 
-    """gets a single video, used for pretraining the backbone"""
     def get_single_vid(self, index):
+        """gets a single video, used for pretraining the backbone"""
         c = self.get_split()
         paths, gt = c.get_single_video(index)
         vid = self.load_and_transform_paths(paths)

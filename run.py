@@ -64,9 +64,6 @@ class Learner:
         return model
 
 
-    """
-    Command line parser
-    """
     def parse_command_line(self):
         parser = argparse.ArgumentParser()
 
@@ -81,12 +78,9 @@ class Learner:
         parser.add_argument("--shot", type=int, default=5, help="Shots per class.")
         parser.add_argument("--query_per_class", type=int, default=5, help="Target samples (i.e. queries) per class used for training.")
         parser.add_argument("--query_per_class_test", type=int, default=1, help="Target samples (i.e. queries) per class used for testing.")
-
         parser.add_argument('--val_iters', nargs='+', type=int, help='iterations to val at. Default is for ssv2 otam split.', default=[10000, 20000, 30000, 50000, 70000, 100000, 150000, 200000, 250000])
         parser.add_argument("--num_val_tasks", type=int, default=1000, help="number of random tasks to val on.")
-
         parser.add_argument("--num_test_tasks", type=int, default=1000, help="number of random tasks to test on.")
-
         parser.add_argument("--print_freq", type=int, default=1000, help="print and log every n iterations.")
         parser.add_argument("--seq_len", type=int, default=8, help="Frames per video.")
         parser.add_argument("--num_workers", type=int, default=8, help="Num dataloader workers.")
@@ -97,8 +91,8 @@ class Learner:
         parser.add_argument("--num_gpus", type=int, default=4, help="Number of GPUs to split the ResNet over")
         parser.add_argument('--sch', nargs='+', type=int, help='iters to drop learning rate', default=[1000000])
         parser.add_argument("--method", choices=["trx", "otam", "tsn", "pal"], default="trx", help="few-shot method to use")
-
-        parser.add_argument("--pretrained_backbone", "-pt", type=str, default=None, help="pretrained backbone path")
+        parser.add_argument("--pretrained_backbone", "-pt", type=str, default=None, help="pretrained backbone path, used by PAL")
+        parser.add_argument("--val_on_test", default=False, action="store_true", help="Danger: Validate on the test set, not the validation set. Use for debugging or checking overfitting on test set. Not good practice to use when developing, hyperparameter tuning or training models.")
 
         args = parser.parse_args()
         
@@ -153,19 +147,19 @@ class Learner:
 
             # validate
             if ((iteration + 1) in self.args.val_iters) and (iteration + 1) != total_iterations:
-#                accuracy_dict = self.evaluate("val")
-#                iter_acc = accuracy_dict[self.args.dataset]["accuracy"]
-#                val_accuraies.append(iter_acc)
-#                self.val_accuracies.print(self.logfile, accuracy_dict, mode="val")
-#
-#                # save checkpoint if best validation score
-#                if iter_acc > best_val_accuracy:
-#                    best_val_accuracy = iter_acc
-#                    self.save_checkpoint(iteration + 1, "checkpoint_best_val.pt")
+                accuracy_dict = self.evaluate("val")
+                iter_acc = accuracy_dict[self.args.dataset]["accuracy"]
+                val_accuraies.append(iter_acc)
+                self.val_accuracies.print(self.logfile, accuracy_dict, mode="val")
 
-                # val on test
-                accuracy_dict = self.evaluate("test")
-                self.val_accuracies.print(self.logfile, accuracy_dict, mode="test")
+                # save checkpoint if best validation score
+                if iter_acc > best_val_accuracy:
+                    best_val_accuracy = iter_acc
+                    self.save_checkpoint(iteration + 1, "checkpoint_best_val.pt")
+
+                if self.args.val_on_test:
+                    accuracy_dict = self.evaluate("test")
+                    self.val_accuracies.print(self.logfile, accuracy_dict, mode="test")
 
                 # get out if best accuracy was two validations ago
                 if val_accuraies[-1] < val_accuraies[-3]:
@@ -188,7 +182,7 @@ class Learner:
 
     def train_task(self, task_dict):
         """
-        For one task, runs forward, calculates the loss and accuract and backprops
+        For one task, runs forward, calculates the loss and accuracy and backprops
         """
         task_dict = self.prepare_task(task_dict)
         model_dict = self.model(task_dict['support_set'], task_dict['support_labels'], task_dict['target_set'])

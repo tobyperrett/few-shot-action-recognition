@@ -65,9 +65,6 @@ def test_backbone_trains(arch, task_dict, args):
 
     assert not np.array_equal(init_weights, final_weights)
 
-def test_pal_pretrained_backbone_loads(args):
-    args.pretrained_backbone = "pretrained_backbones/ssv2_tsn_R50_epoch70.pth.tar"
-    model = CNN_PAL(args)
 
 
 

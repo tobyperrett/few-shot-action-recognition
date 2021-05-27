@@ -10,15 +10,13 @@ from torch.nn.modules.activation import MultiheadAttention
 
 from torch.autograd import Variable
 import torchvision.models as models
-from abc import abstractmethod
-from utils import extract_class_indices
+from utils import extract_class_indices, cos_sim
 from einops import rearrange
 
 class CNN_FSHead(nn.Module):
     """
-    Abstract class which handles a few-shot method. Contains a resnet backbone which computes features.
+    Base class which handles a few-shot method. Contains a resnet backbone which computes features.
     """
-    @abstractmethod
     def __init__(self, args):
         super(CNN_FSHead, self).__init__()
         self.train()
@@ -35,12 +33,6 @@ class CNN_FSHead(nn.Module):
 
         if self.args.pretrained_backbone is not None:
             checkpoint = torch.load(self.args.pretrained_backbone)
-              
-#            if "backbone" in checkpoint.keys():
-#                #self.backbone = nn.Sequential(*list(backbone.children())[:last_layer_idx])
-#                backbone.load_state_dict(checkpoint["backbone"])
-#                return 
-            
             backbone.load_state_dict(checkpoint)
 
         self.backbone = nn.Sequential(*list(backbone.children())[:last_layer_idx])
@@ -59,13 +51,12 @@ class CNN_FSHead(nn.Module):
 
         return support_features, target_features
 
-    @abstractmethod
     def forward(self, support_images, support_labels, target_images):
         """
         Should return a dict containing logits which are required for computing accuracy. Dict can also contain
         other info needed to compute the loss. E.g. inter class distances.
         """
-        pass
+        raise NotImplementedError
 
     def distribute_model(self):
         """
@@ -75,49 +66,14 @@ class CNN_FSHead(nn.Module):
             self.backbone.cuda(0)
             self.backbone = torch.nn.DataParallel(self.backbone, device_ids=[i for i in range(0, self.args.num_gpus)])
     
-    @abstractmethod
     def loss(self, task_dict, model_dict):
         """
         Takes in a the task dict containing labels etc.
         Takes in the model output dict, which contains "logits", as well as any other info needed to compute the loss.
+        Default is cross entropy loss.
         """
-        pass
-
-class Pretrain_CNN_TSN(CNN_FSHead):
-    """
-    TSN with a CNN backbone. Cosine similarity as distance measure.
-    """
-    def __init__(self, args):
-        super(Pretrain_CNN_TSN, self).__init__(args)
-        n_classes = 100
-
-        # use for linear classifier
-        self.linear = torch.nn.Linear(self.args.trans_linear_in_dim, n_classes)
-
-        #use for cos sim
-        self.class_centres = nn.Parameter(torch.zeros(n_classes, self.args.trans_linear_in_dim)) 
-
-    def forward(self, images):
-        b, s, c, h, w = images.shape
-        images = rearrange(images, 'b s c h w -> (b s) c h w')
-
-        features = self.backbone(images).squeeze()
-        features = rearrange(features, '(b s) d -> b s d', b=b)
-        
-        features = torch.mean(features, dim=1)
-
-        # use for linear classifier
-#        features = self.linear(features)
-
-        # use for cos sim classifier
-        features = cos_sim(features, self.class_centres)
-
-        return_dict = {'logits': features}
-        return return_dict
-
-    def loss(self, task_dict, model_dict):
         return F.cross_entropy(model_dict["logits"], task_dict["target_labels"].long())
-
+        
 
 
 class PositionalEncoding(nn.Module):
@@ -272,18 +228,9 @@ class CNN_TRX(CNN_FSHead):
 
             self.transformers.cuda(0)
 
-    def loss(self, task_dict, model_dict):
-        return F.cross_entropy(model_dict["logits"], task_dict["target_labels"].long())
 
 
 
-def relaxed_min(x, lbda=0.1):
-    """
-    Differentiable approx min calculation
-    """
-    rmin = -lbda * torch.log(torch.sum(torch.exp(-x / lbda), dim=-1))
-    
-    return rmin
 
 def OTAM_cum_dist(dists, lbda=0.1):
     """
@@ -299,7 +246,6 @@ def OTAM_cum_dist(dists, lbda=0.1):
     for m in range(1, dists.shape[3]):
         cum_dists[:,:,0,m] = dists[:,:,0,m] + cum_dists[:,:,0,m-1] 
 
-
     # remaining rows
     for l in range(1,dists.shape[2]):
         #first non-zero column
@@ -311,19 +257,6 @@ def OTAM_cum_dist(dists, lbda=0.1):
             
         #last column
         cum_dists[:,:,l,-1] = dists[:,:,l,-1] - lbda * torch.log( torch.exp(- cum_dists[:,:,l-1,-2] / lbda) + torch.exp(- cum_dists[:,:,l,-2] / lbda) )
-
-    # no error with pytorch 1.3, but errors with 1.8. Perhaps it's a silent error?
-    # # remaining rows
-    # for l in range(1,dists.shape[2]):
-    #     #first non-zero column
-    #     cum_dists[:,:,l,1] = dists[:,:,l,1] + relaxed_min(torch.stack([cum_dists[:,:,l-1,1-1], cum_dists[:,:,l-1,1], cum_dists[:,:,l,1-1]], dim=-1))
-        
-    #     #middle columns
-    #     for m in range(2,dists.shape[3]-1):
-    #         cum_dists[:,:,l,m] = dists[:,:,l,m] + relaxed_min(torch.stack([cum_dists[:,:,l-1,m-1], cum_dists[:,:,l,m-1]], dim=-1))
-            
-    #     #last column
-    #     cum_dists[:,:,l,-1] = dists[:,:,l,-1] + relaxed_min(torch.stack([cum_dists[:,:,l-1,-1-1], cum_dists[:,:,l-1,-1], cum_dists[:,:,l,-1-1]], dim=-1))
     
     return cum_dists[:,:,-1,-1]
 
@@ -394,21 +327,10 @@ class CNN_TSN(CNN_FSHead):
         return_dict = {'logits': class_sim}
         return return_dict
 
-    def loss(self, task_dict, model_dict):
-        return F.cross_entropy(model_dict["logits"], task_dict["target_labels"].long())
 
 
 
-def cos_sim(x, y, epsilon=0.01):
-    """
-    Calculates the cosine similarity between the last dimension of two tensors.
-    """
-    numerator = torch.matmul(x, y.transpose(-1,-2))
-    xnorm = torch.norm(x, dim=-1).unsqueeze(-1)
-    ynorm = torch.norm(y, dim=-1).unsqueeze(-1)
-    denominator = torch.matmul(xnorm, ynorm.transpose(-1,-2)) + epsilon
-    dists = torch.div(numerator, denominator)
-    return dists
+
 
 class CNN_PAL(CNN_FSHead):
     """
@@ -418,6 +340,7 @@ class CNN_PAL(CNN_FSHead):
         super(CNN_PAL, self).__init__(args)
         self.mha = MultiheadAttention(embed_dim=self.args.trans_linear_in_dim, num_heads=1, dropout=0)
         self.cos_sim = torch.nn.CosineSimilarity()
+        self.loss_lambda = 1
 
 
     def forward(self, support_images, support_labels, target_images):
@@ -427,7 +350,6 @@ class CNN_PAL(CNN_FSHead):
         support_features = torch.mean(support_features, dim=1)
         target_features = torch.mean(target_features, dim=1)
 
-        #reshape to n_samples, batch=1, dim
         support_features = rearrange(support_features, 'n d -> n 1 d')
         target_features = rearrange(target_features, 'n d -> n 1 d')
 
@@ -441,9 +363,6 @@ class CNN_PAL(CNN_FSHead):
         prototypes = torch.stack(prototypes)
 
         q_s_sim = cos_sim(target_features, prototypes)
-        
-        #q_s_sim = torch.sigmoid(q_s_sim)
-        #q_s_sim = F.softmax(q_s_sim, dim=-1)
 
         return_dict = {'logits': q_s_sim}
 
@@ -463,23 +382,14 @@ class CNN_PAL(CNN_FSHead):
         unique_labels = torch.unique(task_dict["support_labels"])
         total_q_c_sim = torch.sum(pcc_q_s_sim, dim=0) + 0.1
 
-        #print(total_q_c_sim)
-
         q_c_sim = [torch.sum(torch.index_select(pcc_q_s_sim, 0, extract_class_indices(task_dict["target_labels"], c)), dim=0) for c in unique_labels]
         q_c_sim = torch.stack(q_c_sim)
         q_c_sim = torch.diagonal(q_c_sim)
         q_c_sim = torch.div(q_c_sim, total_q_c_sim)
 
-        # q_c_sim = [torch.sum(torch.index_select(q_s_sim, 0, extract_class_indices(task_dict["target_labels"], c))[:,int(c)]) for c in unique_labels]
-        # q_c_sim = torch.div(torch.stack(q_c_sim), total_q_c_sim)
-
-
         l_pcc = - torch.mean(torch.log(q_c_sim))
 
-        #print(l_meta, l_pcc)
-
-        l_lambda = 1#0.1
-        return l_meta + l_lambda * l_pcc
+        return l_meta + self.loss_lambda * l_pcc
 
 
 

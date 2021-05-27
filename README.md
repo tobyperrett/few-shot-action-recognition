@@ -1,6 +1,6 @@
 # Few Shot Action Recognition Library
 
-This repo contains implentations of few-shot action recognition methods using a shared codebase, as they tend not to have public code. I intend to keep it up to date so there's a common resource for people interested in this topic. Feature/method/pull requests are welcome, along with any suggestions or questions.
+This repo contains reimplentations of few-shot action recognition methods using a shared codebase, as they tend not to have public code. These are not the official versions from the original papers/authors. I intend to keep it up to date so there's a common resource for people interested in this topic. Feature/method/pull requests are welcome, along with any suggestions, help or questions.
 
 Key features include:
 
@@ -9,16 +9,17 @@ Key features include:
 - Implementations of SOTA methods using standard backbones and codebase to allow direct comparisons
 - Train/val/test framework for running everything
 
-Implementations include:
+Reimplementations include:
 
 - Episodic TSN baseline (as proposed in OTAM)
 - [TRX](https://arxiv.org/abs/2101.06184) (CVPR 2021)
 - [OTAM](https://openaccess.thecvf.com/content_CVPR_2020/papers/Cao_Few-Shot_Video_Classification_via_Temporal_Alignment_CVPR_2020_paper.pdf) (CVPR 2020)
-- [PAL](https://arxiv.org/abs/2101.08085) (arXiv 2021) Currently in progress as results here are around 2% worse than in the paper
+- [PAL](https://arxiv.org/abs/2101.08085) (arXiv 2021) Currently in progress as results here are around 2% worse than in the paper.
 
-Implementation todo list:
+Todo list:
 
-- CMN (ECCV 2018)
+- Reimplement CMN (ECCV 2018)
+- Tensorboard logging in addition to the current logfile
 - Any other suggestions you think would be useful
 
 
@@ -58,7 +59,7 @@ Download the datasets from their original locations:
 - [HMDB51](https://serre-lab.clps.brown.edu/resource/hmdb-a-large-human-motion-database/#Downloads)
 
 Once you've downloaded the datasets, you can use the extract scripts to extract frames and put them in train/val/test folders. You'll need to modify the paths at the top of the scripts.
-To remove unnecessary frames and save space (i.e. just leave 8 uniformly sampled frames), you can use shrink_dataset.py.
+To remove unnecessary frames and save space (e.g. just leave 8 uniformly sampled frames), you can use shrink_dataset.py. Again, modify the paths at the top of the sctipt.
 
 ## Running
 
@@ -66,9 +67,7 @@ Use run.py. Example arguments for some training runs are in the scripts folder. 
 
 # Citation
 
-If you find this code helpful, please cite the technical report:
-
-And the paper this code is based on:
+If you find this code helpful, please cite the paper this code is based on:
 
 	@inproceedings{perrett2021trx,
 	title = {Temporal Relational CrossTransformers for Few-Shot Action Recognition}
@@ -76,11 +75,6 @@ And the paper this code is based on:
 	year = {2021}}
 
 And of course the original papers containing the respective methods.
-
-
-
-
-
 
 
 
