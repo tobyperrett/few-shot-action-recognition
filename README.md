@@ -1,6 +1,6 @@
 # Few Shot Action Recognition Library
 
-This repo contains reimplentations of few-shot action recognition methods using a shared codebase, as they tend not to have public code. These are not the official versions from the original papers/authors. I intend to keep it up to date so there's a common resource for people interested in this topic. Feature/method/pull requests are welcome, along with any suggestions, help or questions.
+This repo contains reimplementations of few-shot action recognition methods using a shared codebase, as they tend not to have public code. These are not the official versions from the original papers/authors. I intend to keep it up to date so there's a common resource for people interested in this topic. Feature/method/pull requests are welcome, along with any suggestions, help or questions.
 
 Key features include:
 
