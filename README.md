@@ -29,7 +29,7 @@ Datasets supported:
 - UCF101 ([splits from ARN](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123500511.pdf))
 - HMDB51 ([splits from ARN](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123500511.pdf))
 
-I've chosen not to support Kinetics because the full dataset doesn't exist (videos are continually removed from youtube/marked as private) meaning results aren't repeatable, and it's a pain to download the videos which are still there as youtube can randomly block you scraping. Additionaly, it's not a very good test of few-shot action recognition methods as classes can be distinguised by appearance alone, which means it doesn't test temporal understanding.
+I've chosen not to support Kinetics because the full dataset doesn't exist (videos are continually removed from youtube/marked as private) meaning results aren't repeatable, and it's a pain to download the videos which are still there as youtube can randomly block you scraping. Additionaly, it's not a very good test of few-shot action recognition methods as classes can be distinguished by appearance alone, which means it doesn't test temporal understanding.
 
 
 # Instructions
