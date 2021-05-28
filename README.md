@@ -1,33 +1,32 @@
 # Few Shot Action Recognition Library
 
-This repo contains reimplementations of few-shot action recognition methods using a shared codebase, as they tend not to have public code. These are not the official versions from the original papers/authors.
+This repo contains reimplementations of few-shot action recognition methods in Pytorch using a shared codebase, as they tend not to have public code. These are not the official versions from the original papers/authors.
 
 I intend to keep it up to date so there's a common resource for people interested in this topic, and it should be a good codebase to start from if you want to implement your own method. 
 
 Feature/method/pull requests are welcome, along with any suggestions, help or questions.
 
-Key features include:
-
+### Key Features
 - Scripts to extract/format datasets using public splits
 - Easy to use data loader for creating episodic tasks (just uses folders of images so is much easier to get working than the TRX zip version)
-- Implementations of SOTA methods using standard backbones and codebase to allow direct comparisons
+- Reimplementations of SOTA methods using standard backbones and codebase to allow direct comparisons
 - Train/val/test framework for running everything
 
-Reimplementations include:
+### Reimplementations:
 
 - Episodic TSN baseline (as proposed in OTAM)
 - [TRX](https://arxiv.org/abs/2101.06184) (CVPR 2021)
 - [OTAM](https://openaccess.thecvf.com/content_CVPR_2020/papers/Cao_Few-Shot_Video_Classification_via_Temporal_Alignment_CVPR_2020_paper.pdf) (CVPR 2020)
 - [PAL](https://arxiv.org/abs/2101.08085) (arXiv 2021) Currently in progress as results here are around 2% worse than in the paper.
 
-Todo list:
+### Todo list:
 
 - Reimplement CMN (ECCV 2018)
 - Tensorboard logging in addition to the current logfile
 - Any other suggestions you think would be useful
 
 
-Datasets supported:
+### Datasets supported:
 
 - Something-Something V2 ([splits from OTAM](https://openaccess.thecvf.com/content_CVPR_2020/papers/Cao_Few-Shot_Video_Classification_via_Temporal_Alignment_CVPR_2020_paper.pdf))
 - UCF101 ([splits from ARN](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123500511.pdf))
