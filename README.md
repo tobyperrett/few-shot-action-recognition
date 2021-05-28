@@ -12,14 +12,14 @@ Feature/method/pull requests are welcome, along with any suggestions, help or qu
 - Reimplementations of SOTA methods using standard backbones and codebase to allow direct comparisons
 - Train/val/test framework for running everything
 
-### Reimplementations:
+### Reimplementations
 
 - Episodic TSN baseline (as proposed in OTAM)
 - [TRX](https://arxiv.org/abs/2101.06184) (CVPR 2021)
 - [OTAM](https://openaccess.thecvf.com/content_CVPR_2020/papers/Cao_Few-Shot_Video_Classification_via_Temporal_Alignment_CVPR_2020_paper.pdf) (CVPR 2020)
 - [PAL](https://arxiv.org/abs/2101.08085) (arXiv 2021) Currently in progress as results here are around 2% worse than in the paper.
 
-### Todo list:
+### Todo list
 
 - Reimplement CMN (ECCV 2018)
 - Tensorboard logging in addition to the current logfile
