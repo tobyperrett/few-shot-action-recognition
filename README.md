@@ -17,7 +17,7 @@ Feature/method/pull requests are welcome, along with any suggestions, help or qu
 - Episodic TSN baseline (as proposed in OTAM)
 - [TRX](https://arxiv.org/abs/2101.06184) (CVPR 2021)
 - [OTAM](https://openaccess.thecvf.com/content_CVPR_2020/papers/Cao_Few-Shot_Video_Classification_via_Temporal_Alignment_CVPR_2020_paper.pdf) (CVPR 2020)
-- [PAL](https://arxiv.org/abs/2101.08085) (arXiv 2021) Currently in progress as results here are around 2% worse than in the paper.
+- [PAL](https://arxiv.org/abs/2101.08085) (arXiv 2021) Currently in progress as results here are around 2% worse than in the paper. Suggestions for improvement are welcomed.
 
 ### Todo list
 
