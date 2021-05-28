@@ -31,6 +31,7 @@ Feature/method/pull requests are welcome, along with any suggestions, help or qu
 - Something-Something V2 ([splits from OTAM](https://openaccess.thecvf.com/content_CVPR_2020/papers/Cao_Few-Shot_Video_Classification_via_Temporal_Alignment_CVPR_2020_paper.pdf))
 - UCF101 ([splits from ARN](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123500511.pdf))
 - HMDB51 ([splits from ARN](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123500511.pdf))
+- A small version of Something-Something V2 with 5 classes and 10 videos per class per split included in the repo for development purposes
 
 I've chosen not to support Kinetics because the full dataset doesn't exist (videos are continually removed from youtube/marked as private) meaning results aren't repeatable, and it's a pain to download the videos which are still there as youtube can randomly block you scraping. Additionaly, it's not a very good test of few-shot action recognition methods as classes can be distinguished by appearance alone, which means it doesn't test temporal understanding.
 
