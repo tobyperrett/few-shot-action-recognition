@@ -26,7 +26,7 @@ Feature/method/pull requests are welcome, along with any suggestions, help or qu
 - Any other suggestions you think would be useful
 
 
-### Datasets supported:
+### Datasets supported
 
 - Something-Something V2 ([splits from OTAM](https://openaccess.thecvf.com/content_CVPR_2020/papers/Cao_Few-Shot_Video_Classification_via_Temporal_Alignment_CVPR_2020_paper.pdf))
 - UCF101 ([splits from ARN](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123500511.pdf))
