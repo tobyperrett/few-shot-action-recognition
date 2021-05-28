@@ -69,6 +69,10 @@ To remove unnecessary frames and save space (e.g. just leave 8 uniformly sampled
 
 Use run.py. Example arguments for some training runs are in the scripts folder. You might need to modify the distribute functions in model.py to suit your system depending on your GPU configuration.
 
+## Implementing your own method
+
+Inherit the class CNN_FSHead in model.py, and add the option to use it in run.py. That's it! You can see how the other methods do this in model.py.
+
 # Citation
 
 If you find this code helpful, please cite the paper this code is based on:
