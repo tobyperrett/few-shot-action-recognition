@@ -1,4 +1,5 @@
 import torch
+from torch.functional import norm
 import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
@@ -278,11 +279,14 @@ class CNN_OTAM(CNN_FSHead):
         support_features = rearrange(support_features, 'b s d -> (b s) d')
         target_features = rearrange(target_features, 'b s d -> (b s) d')
 
-        numerator  = torch.matmul(target_features, support_features.transpose(-1,-2))
-        t_norm = torch.norm(target_features, dim=-1).unsqueeze(-1)
-        s_norm = torch.norm(support_features, dim=-1).unsqueeze(-1)
-        denominator = torch.matmul(t_norm, s_norm.transpose(-1, -2))
-        frame_dists = 1 - torch.div(numerator, denominator)
+        # numerator  = torch.matmul(target_features, support_features.transpose(-1,-2))
+        # t_norm = torch.norm(target_features, dim=-1).unsqueeze(-1)
+        # s_norm = torch.norm(support_features, dim=-1).unsqueeze(-1)
+        # denominator = torch.matmul(t_norm, s_norm.transpose(-1, -2))
+        # frame_sim = torch.div(numerator, denominator)
+        frame_sim = cos_sim(target_features, support_features)
+
+        frame_dists = 1 - frame_sim
         
         dists = rearrange(frame_dists, '(tb ts) (sb ss) -> tb sb ts ss', tb = n_queries, sb = n_support)
 
@@ -302,11 +306,14 @@ class CNN_OTAM(CNN_FSHead):
 
 class CNN_TSN(CNN_FSHead):
     """
-    TSN with a CNN backbone. Cosine similarity as distance measure.
+    TSN with a CNN backbone.
+    Either cosine similarity or negative norm squared distance. 
+    Use mean distance from query to class videos.
     """
     def __init__(self, args):
         super(CNN_TSN, self).__init__(args)
-        self.l_norm = nn.LayerNorm(self.args.trans_linear_in_dim)
+        self.norm_sq_dist = False
+
 
     def forward(self, support_images, support_labels, target_images):
         support_features, target_features = self.get_feats(support_images, target_images)
@@ -315,19 +322,25 @@ class CNN_TSN(CNN_FSHead):
         support_features = torch.mean(support_features, dim=1)
         target_features = torch.mean(target_features, dim=1)
 
-        support_features = self.l_norm(support_features)
-        target_features = self.l_norm(target_features)
-        
-        class_sim = torch.matmul(target_features, support_features.transpose(-1,-2))
-        class_sim = [torch.mean(torch.index_select(class_sim, 1, extract_class_indices(support_labels, c)), dim=1) for c in unique_labels]
+        if self.norm_sq_dist:
+            class_prototypes = [torch.mean(torch.index_select(support_features, 0, extract_class_indices(support_labels, c)), dim=0) for c in unique_labels]
+            class_prototypes = torch.stack(class_prototypes)
+            
+            diffs = [target_features - class_prototypes[i] for i in unique_labels]
+            diffs = torch.stack(diffs)
 
-        class_sim = torch.stack(class_sim)
-        class_sim = rearrange(class_sim, 'c q -> q c')
+            norm_sq = torch.norm(diffs, dim=[-1])**2
+            distance = - rearrange(norm_sq, 'c q -> q c')
+            return_dict = {'logits': distance}
 
-        return_dict = {'logits': class_sim}
+        else:
+            class_sim = cos_sim(target_features, support_features)
+            class_sim = [torch.mean(torch.index_select(class_sim, 1, extract_class_indices(support_labels, c)), dim=1) for c in unique_labels]
+            class_sim = torch.stack(class_sim)
+            class_sim = rearrange(class_sim, 'c q -> q c')
+            return_dict = {'logits': class_sim}
+
         return return_dict
-
-
 
 
 
@@ -408,15 +421,16 @@ if __name__ == "__main__":
             self.backbone = "resnet18"
             self.num_gpus = 1
             self.temp_set = [2,3]
+            self.pretrained_backbone = None
     args = ArgsObject()
     torch.manual_seed(0)
     
     device = 'cpu'
     # device = 'cuda:0'
     # model = CNN_TRX(args).to(device)
-    # model = CNN_OTAM(args).to(device)
+    model = CNN_OTAM(args).to(device)
     # model = CNN_TSN(args).to(device)
-    model = CNN_PAL(args).to(device)
+    # model = CNN_PAL(args).to(device)
     
     support_imgs = torch.rand(args.way * args.shot * args.seq_len,3, args.img_size, args.img_size).to(device)
     target_imgs = torch.rand(args.way * args.query_per_class * args.seq_len ,3, args.img_size, args.img_size).to(device)
