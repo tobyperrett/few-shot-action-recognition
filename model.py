@@ -245,7 +245,10 @@ def OTAM_cum_dist(dists, lbda=0.1):
 
     # top row
     for m in range(1, dists.shape[3]):
+        cum_dists[:,:,0,m] = dists[:,:,0,m] - lbda * torch.log( torch.exp(- cum_dists[:,:,0,m-1]))
+        # paper does continuous relaxation of the cum_dists entry, but it trains faster without, so using the simpler version for now:
         cum_dists[:,:,0,m] = dists[:,:,0,m] + cum_dists[:,:,0,m-1] 
+
 
     # remaining rows
     for l in range(1,dists.shape[2]):
@@ -257,7 +260,8 @@ def OTAM_cum_dist(dists, lbda=0.1):
             cum_dists[:,:,l,m] = dists[:,:,l,m] - lbda * torch.log( torch.exp(- cum_dists[:,:,l-1,m-1] / lbda) + torch.exp(- cum_dists[:,:,l,m-1] / lbda ) )
             
         #last column
-        cum_dists[:,:,l,-1] = dists[:,:,l,-1] - lbda * torch.log( torch.exp(- cum_dists[:,:,l-1,-2] / lbda) + torch.exp(- cum_dists[:,:,l,-2] / lbda) )
+        # cum_dists[:,:,l,-1] = dists[:,:,l,-1] - lbda * torch.log( torch.exp(- cum_dists[:,:,l-1,-2] / lbda) + torch.exp(- cum_dists[:,:,l,-2] / lbda) )
+        cum_dists[:,:,l,-1] = dists[:,:,l,-1] - lbda * torch.log( torch.exp(- cum_dists[:,:,l-1,-2] / lbda) + torch.exp(- cum_dists[:,:,l-1,-1] / lbda) + torch.exp(- cum_dists[:,:,l,-2] / lbda) )
     
     return cum_dists[:,:,-1,-1]
 
