@@ -245,7 +245,7 @@ def OTAM_cum_dist(dists, lbda=0.1):
 
     # top row
     for m in range(1, dists.shape[3]):
-        cum_dists[:,:,0,m] = dists[:,:,0,m] - lbda * torch.log( torch.exp(- cum_dists[:,:,0,m-1]))
+        # cum_dists[:,:,0,m] = dists[:,:,0,m] - lbda * torch.log( torch.exp(- cum_dists[:,:,0,m-1]))
         # paper does continuous relaxation of the cum_dists entry, but it trains faster without, so using the simpler version for now:
         cum_dists[:,:,0,m] = dists[:,:,0,m] + cum_dists[:,:,0,m-1] 
 
@@ -260,8 +260,8 @@ def OTAM_cum_dist(dists, lbda=0.1):
             cum_dists[:,:,l,m] = dists[:,:,l,m] - lbda * torch.log( torch.exp(- cum_dists[:,:,l-1,m-1] / lbda) + torch.exp(- cum_dists[:,:,l,m-1] / lbda ) )
             
         #last column
-        # cum_dists[:,:,l,-1] = dists[:,:,l,-1] - lbda * torch.log( torch.exp(- cum_dists[:,:,l-1,-2] / lbda) + torch.exp(- cum_dists[:,:,l,-2] / lbda) )
-        cum_dists[:,:,l,-1] = dists[:,:,l,-1] - lbda * torch.log( torch.exp(- cum_dists[:,:,l-1,-2] / lbda) + torch.exp(- cum_dists[:,:,l-1,-1] / lbda) + torch.exp(- cum_dists[:,:,l,-2] / lbda) )
+        cum_dists[:,:,l,-1] = dists[:,:,l,-1] - lbda * torch.log( torch.exp(- cum_dists[:,:,l-1,-2] / lbda) + torch.exp(- cum_dists[:,:,l,-2] / lbda) )
+        #cum_dists[:,:,l,-1] = dists[:,:,l,-1] - lbda * torch.log( torch.exp(- cum_dists[:,:,l-1,-2] / lbda) + torch.exp(- cum_dists[:,:,l-1,-1] / lbda) + torch.exp(- cum_dists[:,:,l,-2] / lbda) )
     
     return cum_dists[:,:,-1,-1]
 
@@ -283,11 +283,11 @@ class CNN_OTAM(CNN_FSHead):
         support_features = rearrange(support_features, 'b s d -> (b s) d')
         target_features = rearrange(target_features, 'b s d -> (b s) d')
 
-        # numerator  = torch.matmul(target_features, support_features.transpose(-1,-2))
-        # t_norm = torch.norm(target_features, dim=-1).unsqueeze(-1)
-        # s_norm = torch.norm(support_features, dim=-1).unsqueeze(-1)
-        # denominator = torch.matmul(t_norm, s_norm.transpose(-1, -2))
-        # frame_sim = torch.div(numerator, denominator)
+        #numerator  = torch.matmul(target_features, support_features.transpose(-1,-2))
+        #t_norm = torch.norm(target_features, dim=-1).unsqueeze(-1)
+        #s_norm = torch.norm(support_features, dim=-1).unsqueeze(-1)
+        #denominator = torch.matmul(t_norm, s_norm.transpose(-1, -2))
+        #frame_sim = torch.div(numerator, denominator)
         frame_sim = cos_sim(target_features, support_features)
 
         frame_dists = 1 - frame_sim
@@ -295,7 +295,7 @@ class CNN_OTAM(CNN_FSHead):
         dists = rearrange(frame_dists, '(tb ts) (sb ss) -> tb sb ts ss', tb = n_queries, sb = n_support)
 
         # calculate query -> support and support -> query
-        cum_dists = 0.5 * OTAM_cum_dist(dists) + 0.5 * OTAM_cum_dist(rearrange(dists, 'tb sb ts ss -> tb sb ss ts'))
+        cum_dists = OTAM_cum_dist(dists) + OTAM_cum_dist(rearrange(dists, 'tb sb ts ss -> tb sb ss ts'))
 
         class_dists = [torch.mean(torch.index_select(cum_dists, 1, extract_class_indices(support_labels, c)), dim=1) for c in unique_labels]
         class_dists = torch.stack(class_dists)
